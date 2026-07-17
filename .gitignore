@@ -1,0 +1,16 @@
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
+
+# Local scratch
+*.log
+
+# NEVER commit the ops DB or anything copied out of crafted-ops.
+# generate.py reads the DB by absolute path at runtime; it is never stored here.
+*.db
+*.sqlite
+*.sqlite3
+crafted-ops/
