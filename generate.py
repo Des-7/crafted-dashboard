@@ -616,13 +616,13 @@ def render(d, gen_amman):
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="refresh" content="1800">
-<title>CraftED — Production Dashboard</title>
+<title>DLC Production Dashboard</title>
 <style>{CSS}</style>
 </head>
 <body>
 <div class="wrap">
 <header>
-  <h1>CraftED — Production Dashboard</h1>
+  <h1>DLC Production Dashboard</h1>
   <div class="sub"><span class="dot"></span>Generated <b>{e(ts)}</b> Amman time
     · auto-refreshes every 30 min ·
     <b>{d["total_videos"]}</b> videos tracked</div>
