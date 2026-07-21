@@ -157,13 +157,21 @@ def collect(conn, now_utc):
             "SELECT video_type, COUNT(*) n FROM videos "
             "GROUP BY video_type ORDER BY n DESC")
     ]
+    # projects IS the faculty layer: each course maps to a faculty via
+    # courses.project_id. p.slug is the ops faculty slug (case-sensitive,
+    # lowercase — displayed verbatim); p.name is the faculty display name.
     d["course_counts"] = [
-        dict(id=r["id"], code=r["code"], name=r["name"], total=r["total"],
+        dict(id=r["id"], project_id=r["project_id"],
+             faculty_slug=r["faculty_slug"], faculty_name=r["faculty_name"],
+             code=r["code"], name=r["name"], total=r["total"],
              delivered=r["delivered"], inflight=r["total"] - r["delivered"])
         for r in conn.execute(
-            "SELECT c.id, c.code, c.name, COUNT(v.id) total, "
+            "SELECT c.id, c.project_id, p.slug AS faculty_slug, "
+            "  p.name AS faculty_name, c.code, c.name, COUNT(v.id) total, "
             "  COALESCE(SUM(CASE WHEN v.status='delivered' THEN 1 ELSE 0 END), 0) delivered "
-            "FROM courses c LEFT JOIN videos v ON v.course_id = c.id "
+            "FROM courses c "
+            "JOIN projects p ON p.id = c.project_id "
+            "LEFT JOIN videos v ON v.course_id = c.id "
             "GROUP BY c.id ORDER BY total DESC")
     ]
     used_slugs = set()
@@ -172,6 +180,27 @@ def collect(conn, now_utc):
         slug = base if base not in used_slugs else f'{base}-{course["id"]}'
         course["slug"] = slug
         used_slugs.add(slug)
+
+    # -- Faculty grouping (projects = faculties) ---------------------------
+    # Group the courses under their faculty for the overview roster, preserving
+    # the total-desc order within each faculty. Faculties themselves are ordered
+    # by video volume (busiest first), ties broken by slug for a stable page.
+    faculties_by_id, faculty_order = {}, []
+    for c in d["course_counts"]:
+        fid = c["project_id"]
+        if fid not in faculties_by_id:
+            faculties_by_id[fid] = dict(
+                id=fid, slug=c["faculty_slug"], name=c["faculty_name"],
+                courses=[], total=0, delivered=0, inflight=0)
+            faculty_order.append(fid)
+        f = faculties_by_id[fid]
+        f["courses"].append(c)
+        f["total"] += c["total"]
+        f["delivered"] += c["delivered"]
+        f["inflight"] += c["inflight"]
+    faculties = [faculties_by_id[i] for i in faculty_order]
+    faculties.sort(key=lambda f: (-f["total"], f["slug"]))
+    d["faculties"] = faculties
 
     # -- Non-delivered videos + stale detection ----------------------------
     non_delivered, stale = [], []
@@ -371,32 +400,50 @@ def render_course_attention(d):
 
 
 def render_course_totals(d):
-    rows = d["course_counts"]
-    if not rows:
+    faculties = d["faculties"]
+    if not faculties:
         return '<p class="muted">No courses yet.</p>'
-    maxtot = max((c["total"] for c in rows), default=1) or 1
-    body = []
-    for c in rows:
-        dpct = (c["delivered"] / maxtot * 100) if maxtot else 0
-        ipct = (c["inflight"] / maxtot * 100) if maxtot else 0
-        body.append(
-            '<div class="bar-row">'
-            f'<div class="bar-label mono"><a class="course-link" href="courses/{e(c["slug"])}/">'
-            f'{e(c["code"])}<span aria-hidden="true">↗</span></a></div>'
-            '<div class="bar-track">'
-            f'<div class="bar-seg green" style="width:{dpct:.2f}%" '
-            f'title="delivered {c["delivered"]}"></div>'
-            f'<div class="bar-seg blue" style="width:{ipct:.2f}%" '
-            f'title="in flight {c["inflight"]}"></div>'
+    # Scale every bar against the busiest course across all faculties so lengths
+    # stay comparable between groups.
+    maxtot = max((c["total"] for f in faculties for c in f["courses"]),
+                 default=1) or 1
+    groups = []
+    for f in faculties:
+        bars = []
+        for c in f["courses"]:
+            dpct = (c["delivered"] / maxtot * 100) if maxtot else 0
+            ipct = (c["inflight"] / maxtot * 100) if maxtot else 0
+            bars.append(
+                '<div class="bar-row">'
+                f'<div class="bar-label mono"><a class="course-link" href="courses/{e(c["slug"])}/">'
+                f'{e(c["code"])}<span aria-hidden="true">↗</span></a></div>'
+                '<div class="bar-track">'
+                f'<div class="bar-seg green" style="width:{dpct:.2f}%" '
+                f'title="delivered {c["delivered"]}"></div>'
+                f'<div class="bar-seg blue" style="width:{ipct:.2f}%" '
+                f'title="in flight {c["inflight"]}"></div>'
+                '</div>'
+                f'<div class="bar-val">{c["delivered"]}<span class="muted">'
+                f'/{c["total"]}</span></div>'
+                '</div>'
+            )
+        course_word = "course" if len(f["courses"]) == 1 else "courses"
+        # Faculty slug shown verbatim (lowercase, as stored in the ops DB).
+        groups.append(
+            '<div class="faculty-group">'
+            '<div class="faculty-head">'
+            f'<span class="faculty-name">{e(f["name"])}</span>'
+            f'<span class="faculty-slug mono">{e(f["slug"])}</span>'
+            f'<span class="faculty-agg muted">{len(f["courses"])} {course_word}'
+            f' · {f["delivered"]}/{f["total"]} delivered</span>'
             '</div>'
-            f'<div class="bar-val">{c["delivered"]}<span class="muted">'
-            f'/{c["total"]}</span></div>'
+            f'<div class="bars">{"".join(bars)}</div>'
             '</div>'
         )
     legend = ('<div class="legend">'
               '<span><i class="sw green"></i>delivered</span>'
               '<span><i class="sw blue"></i>in flight</span></div>')
-    return f'<div class="bars">{"".join(body)}</div>{legend}'
+    return f'{"".join(groups)}{legend}'
 
 
 def render_metrics(d):
@@ -590,6 +637,7 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.22;b
 .metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px}.metric{min-width:0;padding:19px;border:1px solid var(--line);border-radius:16px;background:linear-gradient(155deg,var(--surface-raised),var(--surface))}.metric-top{display:flex;align-items:center;justify-content:space-between;color:var(--faint)}.metric-mark{width:18px;height:3px;border-radius:9px;background:var(--brand)}.metric-v{margin-top:25px;font-size:35px;font-weight:820;line-height:1;letter-spacing:-.045em}.metric-k{margin-top:8px;font-size:12.5px;font-weight:720}.metric-s{min-height:35px;margin-top:4px;color:var(--muted);font-size:11.5px}
 .grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.panel{min-width:0;padding:20px;border:1px solid var(--line);border-radius:18px;background:linear-gradient(155deg,var(--surface-raised),var(--surface))}.panel-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:18px}.panel h3{margin:0;font-size:14px}.panel-note{color:var(--faint);font-size:10.5px}
 .bars{display:flex;flex-direction:column;gap:12px}.bar-row{display:grid;grid-template-columns:minmax(90px,130px) 1fr auto;align-items:center;gap:11px}.bar-label{min-width:0;overflow:hidden;color:var(--muted);font-size:11.5px;text-overflow:ellipsis;white-space:nowrap}.course-link{display:inline-flex;align-items:center;gap:5px;max-width:100%;color:var(--muted);text-decoration:none}.course-link span{color:var(--brand);font-size:9px}.course-link:hover{color:var(--text)}
+.faculty-group{margin-top:20px}.faculty-group:first-child{margin-top:0}.faculty-head{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap;margin-bottom:11px;padding-bottom:8px;border-bottom:1px solid var(--line)}.faculty-name{font-size:13px;font-weight:750;color:var(--text)}.faculty-slug{color:var(--brand);font-size:10px;font-weight:800;letter-spacing:.06em}.faculty-agg{margin-left:auto;font-size:11px}
 .bar-track{display:flex;overflow:hidden;height:9px;border-radius:99px;background:rgba(255,255,255,.06)}.bar-seg{height:100%}.bar-seg.green{background:linear-gradient(90deg,#2fbd85,var(--green))}.bar-seg.blue{background:var(--blue)}.bar-seg.teal{background:linear-gradient(90deg,#35bdb3,var(--teal))}.bar-seg.cyan{background:linear-gradient(90deg,var(--blue),var(--cyan))}.bar-val{min-width:54px;text-align:right;font-size:11.5px;font-weight:700}.legend{display:flex;gap:14px;margin-top:16px;color:var(--muted);font-size:10.5px}.legend .sw{display:inline-block;width:7px;height:7px;margin-right:5px;border-radius:50%}.sw.green{background:var(--green)}.sw.blue{background:var(--blue)}
 .chart{display:flex;align-items:flex-end;gap:7px;height:165px;padding-top:20px;overflow-x:auto}.cbar-col{display:flex;flex:1 1 0;min-width:25px;height:100%;flex-direction:column;align-items:center;justify-content:flex-end}.cbar{width:64%;max-width:32px;min-height:2px;border-radius:5px 5px 2px 2px;background:linear-gradient(180deg,var(--brand),var(--brand-strong))}.cbar[data-zero]{background:rgba(255,255,255,.07)}.cbar-n{margin-bottom:4px;color:#ff9ca4;font-size:10.5px;font-weight:750}.cbar-x{margin-top:7px;color:var(--muted);font-size:10px}.cbar-y{font-size:9px}
 .site-footer{display:flex;align-items:center;justify-content:space-between;gap:20px;margin-top:48px;padding-top:20px;border-top:1px solid var(--line);color:var(--faint);font-size:11px}.site-footer a{color:var(--muted);text-decoration:none}.site-footer a:hover{color:var(--brand)}.footer-badge{display:inline-flex;align-items:center;gap:7px;white-space:nowrap}.footer-badge::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--brand)}
@@ -648,7 +696,7 @@ def render(d, gen_amman):
 </div><div class="section-aside">Rolling operational history</div></div>""")
     parts.append(render_metrics(d))
     parts.append('<div class="grid2">')
-    parts.append('<article class="panel"><div class="panel-heading"><h3>Course delivery progress</h3><span class="panel-note">Delivered / total</span></div>' + render_course_totals(d) + '</article>')
+    parts.append('<article class="panel"><div class="panel-heading"><h3>Delivery by faculty &amp; course</h3><span class="panel-note">Delivered / total</span></div>' + render_course_totals(d) + '</article>')
     parts.append('<article class="panel"><div class="panel-heading"><h3>Monthly deliveries</h3><span class="panel-note">Last 12 months</span></div>' + render_deliveries_chart(d) + '</article></div></section>')
     parts.append("""<section class="dashboard-section" aria-labelledby="portfolio-title">
 <div class="section-heading"><div><div class="section-kicker">04 · Portfolio</div>
