@@ -1,6 +1,6 @@
-# D.Learn — Production Dashboard
+# CraftED — Production Dashboard
 
-A mobile-friendly production monitor for the D.Learn video pipeline.
+A mobile-friendly production monitor for the CraftED video pipeline.
 It is a **static, read-only mirror** of the CraftED operations database: a Python
 script queries the DB and writes one self-contained HTML file (inline CSS/JS, no
 external CDNs — it loads on any device or network), which is published to GitHub

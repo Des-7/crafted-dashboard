@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Regenerate the D.Learn dashboard and publish it to GitHub Pages.
+# Regenerate the CraftED dashboard and publish it to GitHub Pages.
 #
 # One command: run generate.py -> commit ONLY if the data changed -> push.
 # This is what the hourly n8n job will call, so it must be quiet when idle.
