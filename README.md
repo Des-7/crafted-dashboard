@@ -1,6 +1,6 @@
-# CraftED — Production Dashboard
+# D.Learn — Production Dashboard
 
-A single-page, mobile-friendly production monitor for the CraftED video pipeline.
+A mobile-friendly production monitor for the D.Learn video pipeline.
 It is a **static, read-only mirror** of the CraftED operations database: a Python
 script queries the DB and writes one self-contained HTML file (inline CSS/JS, no
 external CDNs — it loads on any device or network), which is published to GitHub
@@ -23,6 +23,8 @@ in Amman time. Open it on a phone — the layout is responsive.
   with its video code), and a 12-month deliveries bar chart (pure CSS/SVG, no
   chart library).
 - **Breakdown** — videos per type and per course.
+- **Course drill-down** — each course name links to an automatically generated
+  page with completion, status distribution, and per-video pipeline progress.
 
 ### A note on the cycle-time metric
 
@@ -40,6 +42,7 @@ Until real end-to-end deliveries accumulate, this metric reads `n/a`.
 | `publish.sh`    | One command: regenerate → commit (only if changed) → push.     |
 | `dashboard.html`| Generated page (the named deliverable). Committed.             |
 | `index.html`    | Identical copy so the bare Pages URL serves the page. Committed.|
+| `courses/`      | Generated course pages, one URL-safe directory per course.     |
 | `.gitignore`    | Keeps the DB and any ops-dir artefacts out of the repo.        |
 | `README.md`     | This file.                                                     |
 
