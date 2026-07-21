@@ -239,12 +239,17 @@ def collect(conn, now_utc):
         "SELECT s.t0, dl.t1 FROM sub s JOIN del dl ON dl.video_id = s.video_id"
     ).fetchall()
     qualifying = []
+    # Same qualifying deliveries, bucketed by their delivered month (t1), so the
+    # monthly chart can reuse this exact rule (see "Deliveries per month" below).
+    qualifying_by_month = {}
     for s in spans:
         t0, t1 = parse_utc(s["t0"]), parse_utc(s["t1"])
         if t0 and t1:
             hrs = (t1 - t0).total_seconds() / 3600.0
             if hrs >= MIN_CYCLE_HOURS:
                 qualifying.append(hrs)
+                ym = f"{t1.year:04d}-{t1.month:02d}"
+                qualifying_by_month[ym] = qualifying_by_month.get(ym, 0) + 1
     d["cycle_delivered_total"] = len(spans)
     d["cycle_qualifying"] = len(qualifying)
     d["cycle_avg_h"] = (sum(qualifying) / len(qualifying)) if qualifying else None
@@ -273,12 +278,12 @@ def collect(conn, now_utc):
         d["review_max_course"] = None
 
     # -- Deliveries per month (last 12 calendar months) ---------------------
-    by_month = {
-        r["ym"]: r["n"]
-        for r in conn.execute(
-            "SELECT strftime('%Y-%m', created_at) ym, COUNT(*) n "
-            "FROM state_transitions WHERE to_state='delivered' GROUP BY ym")
-    }
+    # Count only QUALIFYING deliveries — the same submitted->delivered span rule
+    # (>= MIN_CYCLE_HOURS) the avg-cycle-time metric uses to exclude retroactively
+    # registered pre-system videos. Those bulk rows collapse to ~0h and drop out
+    # here too, so the chart shows real production cadence, not the seed import.
+    # (Every other panel still counts all delivered videos; this filter is
+    # display-only and confined to this chart.)
     months = []
     y, m = now_utc.year, now_utc.month
     for _ in range(12):
@@ -289,7 +294,7 @@ def collect(conn, now_utc):
             y -= 1
     months.reverse()
     d["deliveries_per_month"] = [
-        (f"{yy:04d}-{mm:02d}", by_month.get(f"{yy:04d}-{mm:02d}", 0))
+        (f"{yy:04d}-{mm:02d}", qualifying_by_month.get(f"{yy:04d}-{mm:02d}", 0))
         for (yy, mm) in months
     ]
 
@@ -509,11 +514,21 @@ def render_deliveries_chart(d):
             '</div>'
         )
     total = sum(n for _, n in data)
-    return (
+    chart = (
         f'<div class="chart" role="img" '
         f'aria-label="Deliveries per month, last 12 months, {total} total">'
         f'{"".join(bars)}</div>'
     )
+    if total == 0:
+        # Honest empty state, matching cycle time's n/a: keep the month axis but
+        # say plainly there is nothing real to plot yet. Retroactive seed rows are
+        # excluded (same rule as avg cycle time); real cadence appears as videos
+        # are delivered end-to-end.
+        note = ('<p class="chart-note muted">No deliveries yet — retroactively '
+                'registered videos are excluded (same rule as avg cycle time). '
+                'Real production cadence will appear here.</p>')
+        return note + chart
+    return chart
 
 
 def render_type_breakdown(d):
@@ -639,7 +654,7 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.22;b
 .bars{display:flex;flex-direction:column;gap:12px}.bar-row{display:grid;grid-template-columns:minmax(90px,130px) 1fr auto;align-items:center;gap:11px}.bar-label{min-width:0;overflow:hidden;color:var(--muted);font-size:11.5px;text-overflow:ellipsis;white-space:nowrap}.course-link{display:inline-flex;align-items:center;gap:5px;max-width:100%;color:var(--muted);text-decoration:none}.course-link span{color:var(--brand);font-size:9px}.course-link:hover{color:var(--text)}
 .faculty-group{margin-top:20px}.faculty-group:first-child{margin-top:0}.faculty-head{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap;margin-bottom:11px;padding-bottom:8px;border-bottom:1px solid var(--line)}.faculty-name{font-size:13px;font-weight:750;color:var(--text)}.faculty-slug{color:var(--brand);font-size:10px;font-weight:800;letter-spacing:.06em}.faculty-agg{margin-left:auto;font-size:11px}
 .bar-track{display:flex;overflow:hidden;height:9px;border-radius:99px;background:rgba(255,255,255,.06)}.bar-seg{height:100%}.bar-seg.green{background:linear-gradient(90deg,#2fbd85,var(--green))}.bar-seg.blue{background:var(--blue)}.bar-seg.teal{background:linear-gradient(90deg,#35bdb3,var(--teal))}.bar-seg.cyan{background:linear-gradient(90deg,var(--blue),var(--cyan))}.bar-val{min-width:54px;text-align:right;font-size:11.5px;font-weight:700}.legend{display:flex;gap:14px;margin-top:16px;color:var(--muted);font-size:10.5px}.legend .sw{display:inline-block;width:7px;height:7px;margin-right:5px;border-radius:50%}.sw.green{background:var(--green)}.sw.blue{background:var(--blue)}
-.chart{display:flex;align-items:flex-end;gap:7px;height:165px;padding-top:20px;overflow-x:auto}.cbar-col{display:flex;flex:1 1 0;min-width:25px;height:100%;flex-direction:column;align-items:center;justify-content:flex-end}.cbar{width:64%;max-width:32px;min-height:2px;border-radius:5px 5px 2px 2px;background:linear-gradient(180deg,var(--brand),var(--brand-strong))}.cbar[data-zero]{background:rgba(255,255,255,.07)}.cbar-n{margin-bottom:4px;color:#ff9ca4;font-size:10.5px;font-weight:750}.cbar-x{margin-top:7px;color:var(--muted);font-size:10px}.cbar-y{font-size:9px}
+.chart{display:flex;align-items:flex-end;gap:7px;height:165px;padding-top:20px;overflow-x:auto}.cbar-col{display:flex;flex:1 1 0;min-width:25px;height:100%;flex-direction:column;align-items:center;justify-content:flex-end}.cbar{width:64%;max-width:32px;min-height:2px;border-radius:5px 5px 2px 2px;background:linear-gradient(180deg,var(--brand),var(--brand-strong))}.cbar[data-zero]{background:rgba(255,255,255,.07)}.cbar-n{margin-bottom:4px;color:#ff9ca4;font-size:10.5px;font-weight:750}.cbar-x{margin-top:7px;color:var(--muted);font-size:10px}.cbar-y{font-size:9px}.chart-note{margin:0 0 12px;font-size:11.5px;line-height:1.45}
 .site-footer{display:flex;align-items:center;justify-content:space-between;gap:20px;margin-top:48px;padding-top:20px;border-top:1px solid var(--line);color:var(--faint);font-size:11px}.site-footer a{color:var(--muted);text-decoration:none}.site-footer a:hover{color:var(--brand)}.footer-badge{display:inline-flex;align-items:center;gap:7px;white-space:nowrap}.footer-badge::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--brand)}
 .course-hero .hero-copy{display:block}.back-link{display:inline-flex;align-items:center;gap:7px;margin-bottom:22px;color:var(--muted);font-size:11.5px;font-weight:700;text-decoration:none}.back-link:hover{color:var(--brand)}.course-code{color:var(--brand);font-family:"SFMono-Regular",Consolas,monospace;font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase}.course-name{margin:7px 0 0;font-size:clamp(31px,5vw,48px);line-height:1.04;letter-spacing:-.045em}.course-description{max-width:620px;margin:12px 0 24px;color:var(--muted);font-size:13px}.course-video-table td{vertical-align:middle}.video-identity{min-width:235px}.video-title{color:var(--text);font-size:12.5px;font-weight:700}.video-code{max-width:360px;margin-top:3px;overflow:hidden;color:var(--faint);font-size:10px;text-overflow:ellipsis;white-space:nowrap}.progress-cell{min-width:145px}.video-progress-row{display:flex;align-items:center;gap:9px}.video-progress-track{width:92px;height:6px;overflow:hidden;border-radius:99px;background:rgba(255,255,255,.07)}.video-progress-fill{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,var(--brand-strong),var(--brand))}.video-progress-value{min-width:31px;color:var(--muted);font-size:10.5px;text-align:right}.video-progress-na{color:var(--faint);font-size:10.5px}
 @media(max-width:900px){.hero{grid-template-columns:1fr}.health-card{min-height:210px}.metrics{grid-template-columns:1fr 1fr}.metric:last-child{grid-column:1/-1}}
