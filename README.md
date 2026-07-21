@@ -13,18 +13,21 @@ in Amman time. Open it on a phone — the layout is responsive.
 
 ## What it shows
 
-- **Live pulse** — count of videos per status as colour-coded cards, plus a table
-  of every non-delivered video (code, course, type, status, age in current state).
-  Rows turn red when a video's age exceeds that state's SLA.
-- **Attention needed** — the explicit list of SLA-exceeded videos (same logic as
-  the ops CLI's `stale check`). A calm "all on schedule" line when there are none.
-- **History & throughput** — per-course delivered-vs-in-flight totals; average
-  cycle time (submitted → delivered), a review-rounds metric (average and the max
-  with its video code), and a 12-month deliveries bar chart (pure CSS/SVG, no
-  chart library).
-- **Breakdown** — videos per type and per course.
-- **Course drill-down** — each course name links to an automatically generated
-  page with completion, status distribution, and per-video pipeline progress.
+The **overview page** (`index.html` / `dashboard.html`) is intentionally
+aggregate-only — course names and numbers, no per-video codes (Ahmed's
+2026-07-20 content ruling). Per-video detail lives on the course pages.
+
+- **Pipeline** — count of videos per status as colour-coded cards.
+- **SLA watch** — per-course *counts* of videos past their state SLA (not the
+  videos themselves). Each course links to its page for the specifics; a calm
+  "every course is within SLA" line when there are none.
+- **Performance** — average cycle time (submitted → delivered), a review-rounds
+  metric (average plus the peak rounds on a single video), delivered/total, and a
+  12-month deliveries bar chart (pure CSS/SVG, no chart library).
+- **Portfolio** — per-course delivered-vs-total, videos per type, videos per course.
+- **Course drill-down** — each course name links to a generated page carrying the
+  per-video detail: video code, status, pipeline progress, time in state, SLA, and
+  review rounds, with SLA-exceeded rows flagged.
 
 ### A note on the cycle-time metric
 
@@ -38,7 +41,7 @@ Until real end-to-end deliveries accumulate, this metric reads `n/a`.
 
 | File            | Purpose                                                        |
 | --------------- | -------------------------------------------------------------- |
-| `generate.py`   | Reads the ops DB (read-only) and writes `dashboard.html` + `index.html`. |
+| `generate.py`   | Reads the ops DB (read-only) and writes `dashboard.html` + `index.html` + course pages. |
 | `publish.sh`    | One command: regenerate → commit (only if changed) → push.     |
 | `dashboard.html`| Generated page (the named deliverable). Committed.             |
 | `index.html`    | Identical copy so the bare Pages URL serves the page. Committed.|
@@ -52,9 +55,9 @@ Until real end-to-end deliveries accumulate, this metric reads `n/a`.
 URI. In this mode SQLite rejects every write at the driver level (verified:
 `CREATE`/`INSERT` both raise *"attempt to write a readonly database"*), and it
 will not create a DB if the path is missing. The script's only filesystem writes
-are `dashboard.html` and `index.html` **inside this project directory** — nothing
-is ever written under the ops directory, and the DB is never copied into this
-repo.
+are `dashboard.html`, `index.html`, and the per-course pages under `courses/`
+**inside this project directory** — nothing is ever written under the ops
+directory, and the DB is never copied into this repo.
 
 The DB path is read at runtime (default `/Volumes/Des/crafted-ops/crafted.db`,
 overridable via the `CRAFTED_OPS_DB` environment variable). The database file is
@@ -74,13 +77,25 @@ Publish (regenerate, commit if changed, push):
 ./publish.sh
 ```
 
-## Hourly automation (n8n)
+## Hourly refresh (n8n)
 
 `publish.sh` is designed to be the single command an **n8n** job runs on an hourly
-schedule: it regenerates the page from the current DB state, commits only when the
-output actually changed, and pushes. GitHub Pages then serves the refreshed page
-within a minute or two. Because it commits nothing when nothing changed, running
-it hourly keeps the git history clean.
+schedule: it regenerates the pages from the current DB state, commits only when the
+output actually changed, and pushes. GitHub Pages then serves the refreshed pages
+within a minute or two.
+
+"Actually changed" is enforced by normalising the two bits that move on every run
+regardless of data — the generation timestamp and the server-rendered "time in
+state" age cells on the course pages — before comparing against the committed
+copies. If only the clock and ages moved, the regenerated pages are discarded and
+nothing is committed, so running hourly keeps the git history clean. A genuine
+change (status, counts, an item crossing its SLA, a course added or removed) still
+differs after normalisation and is published.
+
+> **Status (2026-07-21): the hourly n8n job (workflow W4) is INACTIVE.** By
+> Ahmed's explicit decision it stays off — along with the rest of n8n — until
+> go-live. Nothing in this repo activates it; `publish.sh` is currently run
+> manually. Do not enable the schedule before go-live.
 
 ## GitHub Pages
 

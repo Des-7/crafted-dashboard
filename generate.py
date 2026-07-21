@@ -341,56 +341,30 @@ def render_status_cards(d):
     return f'<div class="cards" role="list">{"".join(cards)}</div>'
 
 
-def render_nondelivered_table(d):
-    rows = d["non_delivered"]
-    if not rows:
-        return ('<div class="state-message success"><span class="state-icon" aria-hidden="true">✓</span>'
-                '<div><strong>Production queue is clear</strong>'
-                f'<p>All {d["delivered_total"]} registered videos have been delivered.</p>'
-                '</div></div>')
-    body = []
-    for r in rows:
-        sla_txt = (f'{r["sla_h"]:g}h' if r["sla_h"] is not None else "—")
-        cls = ' class="over"' if r["over"] else ""
-        badge_cls = STATUS_CLASS.get(r["status"], "neutral")
-        body.append(
-            f"<tr{cls}>"
-            f'<td class="mono">{e(r["code"])}</td>'
-            f'<td>{e(r["course"])}</td>'
-            f'<td>{e(r["vtype"])}</td>'
-            f'<td><span class="pill {e(badge_cls)}">'
-            f'{e(r["status"].replace("_", " "))}</span></td>'
-            f'<td class="num">{e(fmt_age(r["age_h"]))}</td>'
-            f'<td class="num muted">{sla_txt}</td>'
-            f"</tr>"
-        )
-    return (
-        '<div class="table-wrap"><table>'
-        '<thead><tr><th>Code</th><th>Course</th><th>Type</th>'
-        '<th>Status</th><th class="num">Age in state</th>'
-        '<th class="num">SLA</th></tr></thead>'
-        f'<tbody>{"".join(body)}</tbody></table></div>'
-    )
+def render_course_attention(d):
+    """Per-course SLA-exceeded counts for the main page.
 
-
-def render_stale(d):
-    rows = d["stale"]
-    if not rows:
+    Aggregate only: how many videos in each course have exceeded their state
+    SLA — no video codes. Each course links to its own page, where the specific
+    over-SLA videos (with codes and ages) are listed. This keeps the main page
+    to faculty/course names and numbers per Ahmed's 2026-07-20 content ruling.
+    """
+    courses = [c for c in d["course_details"] if c["attention_count"] > 0]
+    if not courses:
         return ('<div class="state-message success compact"><span class="state-icon" aria-hidden="true">✓</span>'
-                '<div><strong>Every item is within SLA</strong>'
-                '<p>No video needs immediate attention.</p></div></div>')
+                '<div><strong>Every course is within SLA</strong>'
+                '<p>No course has a video past its state threshold.</p></div></div>')
+    courses.sort(key=lambda c: -c["attention_count"])
     items = []
-    for r in rows:
-        over_by = (r["age_h"] - r["sla_h"]) if r["sla_h"] is not None else None
+    for c in courses:
+        n = c["attention_count"]
+        vids = "video" if n == 1 else "videos"
         items.append(
             '<li>'
-            f'<span class="mono">{e(r["code"])}</span> '
-            f'<span class="muted">({e(r["course"])})</span> — '
-            f'<span class="pill {e(STATUS_CLASS.get(r["status"], "neutral"))}">'
-            f'{e(r["status"].replace("_", " "))}</span> '
-            f'in state <b>{e(fmt_age(r["age_h"]))}</b>, '
-            f'SLA {r["sla_h"]:g}h '
-            f'<span class="over-by">(+{fmt_age(over_by)} over)</span>'
+            f'<a class="course-link" href="courses/{e(c["slug"])}/">'
+            f'{e(c["name"])} <span class="muted mono">{e(c["code"])}</span>'
+            '<span aria-hidden="true">↗</span></a> — '
+            f'<span class="over-by">{n} {vids} over SLA</span>'
             '</li>'
         )
     return f'<ul class="stale-list">{"".join(items)}</ul>'
@@ -441,8 +415,8 @@ def render_metrics(d):
         rev_sub = "no video has reached review yet"
     else:
         rev_val = f'{d["review_avg"]:.2f}'
-        rev_sub = (f'max {d["review_max"]} '
-                   f'(<span class="mono">{e(d["review_max_code"])}</span>)')
+        rounds_word = "round" if d["review_max"] == 1 else "rounds"
+        rev_sub = f'peak {d["review_max"]} {rounds_word} on a single video'
     return (
         '<div class="metrics">'
         '<article class="metric"><div class="metric-top"><span>Speed</span><i class="metric-mark"></i></div>'
@@ -635,7 +609,7 @@ def render(d, gen_amman):
     parts = [f"""<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="refresh" content="1800"><meta name="theme-color" content="#071018">
-<meta name="description" content="D.Learn automated video production overview">
+<meta name="description" content="D.Learn video production overview">
 <title>D.Learn Production Control</title><style>{CSS}</style></head><body><div class="wrap">
 <header class="site-header"><div class="brand-lockup"><div class="brand-mark" aria-hidden="true">DLC</div>
 <div><div class="brand-kicker">D.Learn</div><div class="brand-title">Production Control</div></div></div>
@@ -659,17 +633,13 @@ def render(d, gen_amman):
 <p class="section-copy">A live distribution of every tracked video across the production workflow.</p>
 </div><div class="section-aside">Refreshes automatically every 30 minutes</div></div>""")
     parts.append(render_status_cards(d))
-    parts.append("""<div class="section-heading queue-heading"><div>
-<h3 class="section-title">Active production queue</h3>
-<p class="section-copy">Non-delivered videos, ordered by time in their current state.</p></div></div>""")
-    parts.append(render_nondelivered_table(d))
     parts.append("</section>")
     parts.append("""<section class="dashboard-section" aria-labelledby="attention-title">
 <div class="section-heading"><div><div class="section-kicker">02 · Attention</div>
 <h2 class="section-title" id="attention-title">SLA watch</h2>
-<p class="section-copy">Items surface here only when they remain in a state beyond its agreed threshold.</p>
+<p class="section-copy">Courses with one or more videos past their state SLA. Open a course to see the specific videos.</p>
 </div><div class="section-aside">Priority signal, not total volume</div></div>""")
-    parts.append(render_stale(d))
+    parts.append(render_course_attention(d))
     parts.append("</section>")
     parts.append("""<section class="dashboard-section" aria-labelledby="performance-title">
 <div class="section-heading"><div><div class="section-kicker">03 · Performance</div>
@@ -767,8 +737,26 @@ def write_course_pages(data, gen_amman):
     return len(current)
 
 
+def resolve_now_utc():
+    """Current UTC time, overridable via CRAFTED_NOW for reproducible tests.
+
+    Production leaves CRAFTED_NOW unset and uses the wall clock. Tests set it to
+    an ISO/DB timestamp to render at a fixed instant (e.g. to prove that a page
+    generated an hour later is treated as unchanged once the clock and age cells
+    are normalised out).
+    """
+    override = os.environ.get("CRAFTED_NOW")
+    if override:
+        dt = parse_utc(override)
+        if dt is None:
+            raise SystemExit(f"error: bad CRAFTED_NOW {override!r} "
+                             "(expected 'YYYY-MM-DD HH:MM:SS')")
+        return dt
+    return datetime.now(timezone.utc)
+
+
 def main():
-    now_utc = datetime.now(timezone.utc)
+    now_utc = resolve_now_utc()
     gen_amman = now_utc.astimezone(AMMAN)
     conn = connect_ro(DB_PATH)
     try:
