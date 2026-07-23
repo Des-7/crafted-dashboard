@@ -9,7 +9,9 @@ script NEVER writes to the DB or anywhere under the ops directory; it only reads
 Run:  python3 generate.py
 """
 
+import base64
 import html
+import math
 import os
 import re
 import sqlite3
@@ -351,259 +353,276 @@ MONTH_ABBR = ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun",
               "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
 
-def render_status_cards(d):
+def _tone(status):
+    """Map a pipeline status to a CSS tone class (drives dot/pill/bar colour)."""
+    return "s-" + STATUS_CLASS.get(status, "neutral")
+
+
+_RING_C = 2 * math.pi * 90  # circumference of the r=90 donut ring
+
+
+def render_ring(pct, gid):
+    """A 200x200 SVG donut filled to pct, gold gradient, rounded cap."""
+    offset = _RING_C * (1 - pct / 100.0)
+    return (
+        '<svg width="200" height="200" viewBox="0 0 200 200" aria-hidden="true">'
+        f'<defs><linearGradient id="{gid}" x1="0" y1="0" x2="1" y2="1">'
+        '<stop offset="0" stop-color="#f0cf7a"></stop>'
+        '<stop offset="1" stop-color="#e2b64e"></stop></linearGradient></defs>'
+        '<circle cx="100" cy="100" r="90" fill="none" stroke="rgba(255,255,255,.07)" stroke-width="12"></circle>'
+        f'<circle cx="100" cy="100" r="90" fill="none" stroke="url(#{gid})" stroke-width="12" '
+        f'stroke-linecap="round" stroke-dasharray="{_RING_C:.2f}" stroke-dashoffset="{offset:.2f}" '
+        'transform="rotate(-90 100 100)"></circle></svg>'
+    )
+
+
+def render_kpis(items):
+    """A row of four KPI tiles: [(value, label, colour_class), ...]."""
+    tiles = []
+    for value, label, cls in items:
+        tiles.append(
+            f'<div class="kpi"><div class="kpi-v {cls}">{value}</div>'
+            f'<div class="kpi-l">{e(label)}</div></div>'
+        )
+    return f'<div class="kpis">{"".join(tiles)}</div>'
+
+
+def render_pipeline_cards(d):
+    """Big count cards for each pipeline state present (dashboard + course)."""
     present = [(s, d["status_counts"].get(s, 0)) for s in STATUS_ORDER
                if d["status_counts"].get(s, 0) > 0]
-    if not present:
-        return '<p class="muted">No videos registered yet.</p>'
     total = d["total_videos"] or 1
+    if not present:
+        return ('<div class="card pcard"><div class="pcard-foot">'
+                'No videos registered yet.</div></div>')
     cards = []
     for status, n in present:
-        cls = STATUS_CLASS.get(status, "neutral")
+        pct = n / total * 100
         label = status.replace("_", " ")
-        share = n / total * 100
         cards.append(
-            f'<article class="card {e(cls)}" role="listitem">'
-            '<div class="card-head">'
-            f'<span class="status-dot" aria-hidden="true"></span>{e(label)}'
-            '</div><div class="card-value-row">'
-            f'<div class="card-n">{n}</div><div class="card-share">{share:.0f}%</div>'
-            '</div><div class="card-meter" aria-hidden="true">'
-            f'<span style="width:{share:.2f}%"></span></div>'
-            f'<div class="card-l">of {d["total_videos"]} tracked videos</div></article>'
+            f'<div class="card pcard {_tone(status)}">'
+            f'<div class="pcard-head"><span class="dot"></span>{e(label)}</div>'
+            f'<div class="pcard-row"><div class="pcard-n">{n}</div>'
+            f'<div class="pcard-pct">{pct:.0f}%</div></div>'
+            f'<div class="bar6"><div class="bar6-fill" style="width:{pct:.2f}%"></div></div>'
+            f'<div class="pcard-foot">of {d["total_videos"]} tracked videos</div></div>'
         )
-    return f'<div class="cards" role="list">{"".join(cards)}</div>'
+    return f'<div class="two">{"".join(cards)}</div>'
 
 
-def render_course_attention(d):
-    """Per-course SLA-exceeded counts for the main page.
+def render_faculty(d):
+    """BY FACULTY partition: each faculty groups its clickable course rows."""
+    faculties = d["faculties"]
+    if not faculties:
+        return ('<div class="card part"><div class="part-label">By faculty</div>'
+                '<p class="lead">No courses yet.</p></div>')
+    groups = []
+    for f in faculties:
+        rows = []
+        for c in f["courses"]:
+            # Segments fill each row relative to the course's own total.
+            dpct = (c["delivered"] / c["total"] * 100) if c["total"] else 0
+            ipct = (c["inflight"] / c["total"] * 100) if c["total"] else 0
+            rows.append(
+                f'<a class="crow" href="courses/{e(c["slug"])}/">'
+                f'<span class="crow-name"><b>{e(c["name"])}</b>'
+                '<i aria-hidden="true">&#8599;</i></span>'
+                '<span class="stack">'
+                f'<span class="seg green" style="width:{dpct:.2f}%"></span>'
+                f'<span class="seg blue" style="width:{ipct:.2f}%"></span></span>'
+                f'<span class="crow-ratio"><b>{c["delivered"]}</b>'
+                f'<span>/{c["total"]}</span></span></a>'
+            )
+        cw = "course" if len(f["courses"]) == 1 else "courses"
+        groups.append(
+            '<div class="fac"><div class="fac-head"><div class="fac-id">'
+            f'<span class="fac-name">{e(f["name"])}</span>'
+            f'<span class="fac-code">{e(f["slug"])}</span></div>'
+            f'<span class="fac-sum">{len(f["courses"])} {cw} '
+            f'&middot; {f["delivered"]}/{f["total"]} delivered</span></div>'
+            f'<div class="fac-rows">{"".join(rows)}</div></div>'
+        )
+    legend = ('<div class="legend">'
+              '<span class="leg"><span class="leg-dot" style="background:var(--green)"></span>delivered</span>'
+              '<span class="leg"><span class="leg-dot" style="background:var(--blue)"></span>in flight</span></div>')
+    return (f'<div class="card part"><div class="part-label">By faculty</div>'
+            f'{"".join(groups)}{legend}</div>')
 
-    Aggregate only: how many videos in each course have exceeded their state
-    SLA — no video codes. Each course links to its own page, where the specific
-    over-SLA videos (with codes and ages) are listed. This keeps the main page
-    to faculty/course names and numbers per Ahmed's 2026-07-20 content ruling.
+
+_TYPE_TONE = {"video": "var(--gold)", "storyboard": "var(--blue)"}
+_TYPE_PALETTE = ["var(--gold)", "var(--blue)", "var(--teal)", "var(--cyan)", "var(--green)"]
+
+
+def render_type_mix(d):
+    """BY TYPE partition: one labelled bar per content format."""
+    rows = d["type_counts"]
+    if not rows:
+        return ('<div class="card part"><div class="part-label">By type</div>'
+                '<p class="lead">No videos yet.</p></div>')
+    total = sum(n for _, n in rows) or 1
+    body = []
+    for i, (vtype, n) in enumerate(rows):
+        pct = n / total * 100
+        color = _TYPE_TONE.get(vtype, _TYPE_PALETTE[i % len(_TYPE_PALETTE)])
+        body.append(
+            '<div class="trow"><div class="trow-head">'
+            f'<span class="trow-name">{e(vtype)}</span>'
+            f'<span class="trow-val"><b>{n}</b> &middot; {pct:.0f}%</span></div>'
+            f'<div class="bar9"><div class="bar9-fill" '
+            f'style="width:{pct:.2f}%;background:{color}"></div></div></div>'
+        )
+    return (f'<div class="card part"><div class="part-label">By type</div>'
+            f'<div class="tmix">{"".join(body)}</div></div>')
+
+
+def render_throughput(d):
+    """Three mini stat cards: speed, quality loop, output."""
+    if d["cycle_avg_h"] is None:
+        speed_v = "n/a"
+        speed_s = (f'avg cycle time &mdash; no delivery has a &ge;1h cool-down span '
+                   f'yet ({d["cycle_delivered_total"]} delivered, all instant)')
+    else:
+        speed_v = fmt_age(d["cycle_avg_h"])
+        speed_s = (f'avg cycle time &mdash; over {d["cycle_qualifying"]} of '
+                   f'{d["cycle_delivered_total"]} delivered (excludes retroactive)')
+    if d["review_avg"] is None:
+        q_v = "n/a"
+        q_s = "avg review rounds / video &mdash; none have reached review yet"
+    else:
+        q_v = f'{d["review_avg"]:.2f}'
+        rw = "round" if d["review_max"] == 1 else "rounds"
+        q_s = (f'avg review rounds / video &mdash; peak: {d["review_max"]} {rw} '
+               'on a single video')
+    out_s = (f'delivered / total &mdash; {d["inflight_total"]} left to finish'
+             if d["inflight_total"] else 'delivered / total &mdash; all delivered')
+    cards = [
+        ("SPEED", speed_v, speed_s),
+        ("QUALITY LOOP", q_v, q_s),
+        ("OUTPUT", f'{d["delivered_total"]}<span>/{d["total_videos"]}</span>', out_s),
+    ]
+    items = []
+    for label, val, sub in cards:
+        items.append(
+            f'<div class="card tcard"><div class="tcard-l">{label}</div>'
+            f'<div class="tcard-v">{val}</div><div class="tcard-s">{sub}</div></div>'
+        )
+    return f'<div class="through">{"".join(items)}</div>'
+
+
+def render_monthly(d):
+    """Monthly deliveries bar chart with an honest empty state."""
+    data = d["deliveries_per_month"]
+    maxn = max((n for _, n in data), default=0) or 1
+    cols = []
+    for ym, n in data:
+        _, m = ym.split("-")
+        label = MONTH_ABBR[int(m)].lower()
+        if n == 0:
+            bar = '<div class="col-bar zero" style="height:3px"></div>'
+        else:
+            px = max(6, n / maxn * 110)
+            bar = f'<div class="col-bar" style="height:{px:.1f}px"></div>'
+        cols.append(
+            f'<div class="col" title="{e(ym)}: {n} delivered">{bar}'
+            f'<div class="col-x">{label}</div></div>'
+        )
+    total = sum(n for _, n in data)
+    empty = ''
+    if total == 0:
+        empty = ('<div class="chart-empty"><span>No dated deliveries yet '
+                 '&mdash; real production volume will appear here as videos '
+                 'ship.</span></div>')
+    return ('<div class="card chartcard"><div class="chart-title">Monthly deliveries</div>'
+            f'<div class="chart">{"".join(cols)}{empty}</div></div>')
+
+
+def render_sla_banner(d):
+    """SLA watch: a calm green banner, or a red one listing at-risk courses.
+
+    Aggregate/course-name only on the main page (no video codes) per the
+    content ruling; the specific over-SLA videos live on each course page.
     """
     courses = [c for c in d["course_details"] if c["attention_count"] > 0]
     if not courses:
-        return ('<div class="state-message success compact"><span class="state-icon" aria-hidden="true">✓</span>'
-                '<div><strong>Every course is within SLA</strong>'
-                '<p>No course has a video past its state threshold.</p></div></div>')
+        return ('<div class="sla ok"><div class="sla-icon">'
+                '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#3ecf8e" '
+                'stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">'
+                '<path d="M20 6 9 17l-5-5"></path></svg></div>'
+                '<div class="sla-body"><div class="sla-title">Every course is within SLA</div>'
+                '<div class="sla-sub">No course has a video past its state threshold.</div></div>'
+                '<div class="sla-count">0 courses at risk</div></div>')
     courses.sort(key=lambda c: -c["attention_count"])
     items = []
     for c in courses:
         n = c["attention_count"]
         vids = "video" if n == 1 else "videos"
         items.append(
-            '<li>'
-            f'<a class="course-link" href="courses/{e(c["slug"])}/">'
-            f'{e(c["name"])} <span class="muted mono">{e(c["code"])}</span>'
-            '<span aria-hidden="true">↗</span></a> — '
-            f'<span class="over-by">{n} {vids} over SLA</span>'
-            '</li>'
+            f'<li><a href="courses/{e(c["slug"])}/">{e(c["name"])} '
+            f'<span class="code">{e(c["code"])}</span></a> &mdash; '
+            f'<span class="over">{n} {vids} over SLA</span></li>'
         )
-    return f'<ul class="stale-list">{"".join(items)}</ul>'
+    n_at = len(courses)
+    cw = "course" if n_at == 1 else "courses"
+    return ('<div class="sla risk"><div class="sla-icon">'
+            '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#f87171" '
+            'stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">'
+            '<path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z">'
+            '</path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg></div>'
+            f'<div class="sla-body"><div class="sla-title">{n_at} {cw} need attention</div>'
+            f'<ul class="sla-list">{"".join(items)}</ul></div>'
+            f'<div class="sla-count">{n_at} at risk</div></div>')
 
 
-def render_course_totals(d):
-    faculties = d["faculties"]
-    if not faculties:
-        return '<p class="muted">No courses yet.</p>'
-    # Scale every bar against the busiest course across all faculties so lengths
-    # stay comparable between groups.
-    maxtot = max((c["total"] for f in faculties for c in f["courses"]),
-                 default=1) or 1
-    groups = []
-    for f in faculties:
-        bars = []
-        for c in f["courses"]:
-            dpct = (c["delivered"] / maxtot * 100) if maxtot else 0
-            ipct = (c["inflight"] / maxtot * 100) if maxtot else 0
-            bars.append(
-                '<div class="bar-row">'
-                f'<div class="bar-label mono"><a class="course-link" href="courses/{e(c["slug"])}/">'
-                f'{e(c["code"])}<span aria-hidden="true">↗</span></a></div>'
-                '<div class="bar-track">'
-                f'<div class="bar-seg green" style="width:{dpct:.2f}%" '
-                f'title="delivered {c["delivered"]}"></div>'
-                f'<div class="bar-seg blue" style="width:{ipct:.2f}%" '
-                f'title="in flight {c["inflight"]}"></div>'
-                '</div>'
-                f'<div class="bar-val">{c["delivered"]}<span class="muted">'
-                f'/{c["total"]}</span></div>'
-                '</div>'
-            )
-        course_word = "course" if len(f["courses"]) == 1 else "courses"
-        # Faculty slug shown verbatim (lowercase, as stored in the ops DB).
-        groups.append(
-            '<div class="faculty-group">'
-            '<div class="faculty-head">'
-            f'<span class="faculty-name">{e(f["name"])}</span>'
-            f'<span class="faculty-slug mono">{e(f["slug"])}</span>'
-            f'<span class="faculty-agg muted">{len(f["courses"])} {course_word}'
-            f' · {f["delivered"]}/{f["total"]} delivered</span>'
-            '</div>'
-            f'<div class="bars">{"".join(bars)}</div>'
-            '</div>'
-        )
-    legend = ('<div class="legend">'
-              '<span><i class="sw green"></i>delivered</span>'
-              '<span><i class="sw blue"></i>in flight</span></div>')
-    return f'{"".join(groups)}{legend}'
-
-
-def render_metrics(d):
-    # Cycle time
-    if d["cycle_avg_h"] is None:
-        cyc_val = "n/a"
-        cyc_sub = (f'no delivery has a &ge;1h submitted&rarr;delivered span yet '
-                   f'({d["cycle_delivered_total"]} delivered, all retroactive)')
-    else:
-        cyc_val = fmt_age(d["cycle_avg_h"])
-        cyc_sub = (f'over {d["cycle_qualifying"]} of {d["cycle_delivered_total"]} '
-                   f'delivered (excludes same-day retroactive registrations)')
-    # Review rounds
-    if d["review_avg"] is None:
-        rev_val = "n/a"
-        rev_sub = "no video has reached review yet"
-    else:
-        rev_val = f'{d["review_avg"]:.2f}'
-        rounds_word = "round" if d["review_max"] == 1 else "rounds"
-        rev_sub = f'peak {d["review_max"]} {rounds_word} on a single video'
-    return (
-        '<div class="metrics">'
-        '<article class="metric"><div class="metric-top"><span>Speed</span><i class="metric-mark"></i></div>'
-        f'<div class="metric-v">{cyc_val}</div>'
-        '<div class="metric-k">avg cycle time</div>'
-        f'<div class="metric-s">{cyc_sub}</div>'
-        '</article><article class="metric"><div class="metric-top"><span>Quality loop</span><i class="metric-mark"></i></div>'
-        f'<div class="metric-v">{rev_val}</div>'
-        '<div class="metric-k">avg review rounds / video</div>'
-        f'<div class="metric-s">{rev_sub}</div>'
-        '</article><article class="metric"><div class="metric-top"><span>Output</span><i class="metric-mark"></i></div>'
-        f'<div class="metric-v">{d["delivered_total"]}<span class="muted">'
-        f'/{d["total_videos"]}</span></div>'
-        '<div class="metric-k">delivered / total</div>'
-        f'<div class="metric-s">{d["inflight_total"]} in flight</div>'
-        '</article>'
-        '</div>'
-    )
-
-
-def render_deliveries_chart(d):
-    data = d["deliveries_per_month"]
-    maxn = max((n for _, n in data), default=0)
-    if maxn == 0:
-        # keep a baseline so empty bars still render a readable axis
-        maxn = 1
-    bars = []
-    for ym, n in data:
-        y, m = ym.split("-")
-        label = MONTH_ABBR[int(m)]
-        h = (n / maxn * 100) if maxn else 0
-        # minimum visible sliver for zero so the month still reads on the axis
-        style_h = max(h, 1.5)
-        val = f'<span class="cbar-n">{n}</span>' if n else ''
-        bars.append(
-            '<div class="cbar-col" '
-            f'title="{e(ym)}: {n} delivered">'
-            f'{val}'
-            f'<div class="cbar" style="height:{style_h:.2f}%"'
-            f'{" data-zero=1" if n == 0 else ""}></div>'
-            f'<div class="cbar-x">{label}</div>'
-            f'<div class="cbar-y muted">{e(y[2:])}</div>'
-            '</div>'
-        )
-    total = sum(n for _, n in data)
-    chart = (
-        f'<div class="chart" role="img" '
-        f'aria-label="Deliveries per month, last 12 months, {total} total">'
-        f'{"".join(bars)}</div>'
-    )
-    if total == 0:
-        # Honest empty state, matching cycle time's n/a: keep the month axis but
-        # say plainly there is nothing real to plot yet. Retroactive seed rows are
-        # excluded (same rule as avg cycle time); real cadence appears as videos
-        # are delivered end-to-end.
-        note = ('<p class="chart-note muted">No deliveries yet — retroactively '
-                'registered videos are excluded (same rule as avg cycle time). '
-                'Real production cadence will appear here.</p>')
-        return note + chart
-    return chart
-
-
-def render_type_breakdown(d):
-    rows = d["type_counts"]
-    if not rows:
-        return '<p class="muted">No videos yet.</p>'
-    total = sum(n for _, n in rows) or 1
-    body = []
-    for vtype, n in rows:
-        pct = n / total * 100
-        body.append(
-            '<div class="bar-row">'
-            f'<div class="bar-label">{e(vtype)}</div>'
-            '<div class="bar-track">'
-            f'<div class="bar-seg teal" style="width:{pct:.2f}%"></div></div>'
-            f'<div class="bar-val">{n}<span class="muted"> '
-            f'{pct:.0f}%</span></div>'
-            '</div>'
-        )
-    return f'<div class="bars">{"".join(body)}</div>'
-
-
-def render_course_breakdown(d):
-    rows = sorted(d["course_counts"], key=lambda c: -c["total"])
-    if not rows:
-        return '<p class="muted">No courses yet.</p>'
-    total = sum(c["total"] for c in rows) or 1
-    body = []
-    for c in rows:
-        pct = c["total"] / total * 100
-        body.append(
-            '<div class="bar-row">'
-            f'<div class="bar-label mono"><a class="course-link" href="courses/{e(c["slug"])}/">'
-            f'{e(c["code"])}<span aria-hidden="true">↗</span></a></div>'
-            '<div class="bar-track">'
-            f'<div class="bar-seg cyan" style="width:{pct:.2f}%"></div></div>'
-            f'<div class="bar-val">{c["total"]}<span class="muted"> '
-            f'{pct:.0f}%</span></div>'
-            '</div>'
-        )
-    return f'<div class="bars">{"".join(body)}</div>'
+def _done_panel(title, sub):
+    return ('<div class="card done"><div class="done-icon">'
+            '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#3ecf8e" '
+            'stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">'
+            '<path d="M20 6 9 17l-5-5"></path></svg></div>'
+            f'<div class="done-title">{title}</div>'
+            f'<div class="done-sub">{sub}</div></div>')
 
 
 def render_course_video_table(course):
-    """Render the public, non-sensitive video progress table for one course."""
+    """Per-video progress table for one course (video codes allowed here).
+
+    A fully-delivered course collapses to a celebratory aggregate panel instead
+    of a long, redundant all-delivered table (per the design handoff).
+    """
+    if course["total_videos"] and course["inflight_total"] == 0:
+        vw = "video" if course["delivered_total"] == 1 else "videos"
+        return _done_panel(
+            f'All {course["delivered_total"]} {vw} delivered',
+            'This course is fully delivered &mdash; no videos remain in the '
+            'production pipeline.')
     if not course["videos"]:
-        return ('<div class="state-message compact"><span class="state-icon" aria-hidden="true">—</span>'
-                '<div><strong>No videos registered yet</strong>'
-                '<p>This page will update automatically when videos are added.</p></div></div>')
+        return _done_panel(
+            'No videos registered yet',
+            'This page will update automatically when videos are added.')
     rows = []
-    for video in course["videos"]:
-        row_cls = ' class="over"' if video["over"] else ""
-        badge_cls = STATUS_CLASS.get(video["status"], "neutral")
-        sla_txt = f'{video["sla_h"]:g}h' if video["sla_h"] is not None else "—"
-        if video["progress"] is None:
-            progress = '<span class="video-progress-na">Off pipeline</span>'
+    for v in course["videos"]:
+        tone = _tone(v["status"])
+        sla_txt = f'{v["sla_h"]:g}h' if v["sla_h"] is not None else "&mdash;"
+        if v["progress"] is None:
+            prog = '<div class="v-prog off">Off pipeline</div>'
         else:
-            progress = ('<div class="video-progress-row" '
-                        f'aria-label="{video["progress"]:.0f}% through pipeline">'
-                        '<div class="video-progress-track" aria-hidden="true">'
-                        f'<span class="video-progress-fill" style="width:{video["progress"]:.2f}%"></span>'
-                        '</div>'
-                        f'<span class="video-progress-value">{video["progress"]:.0f}%</span></div>')
+            prog = (f'<div class="v-prog {tone}"><div class="bar5">'
+                    f'<span style="width:{v["progress"]:.2f}%"></span></div>'
+                    f'<span class="pct">{v["progress"]:.0f}%</span></div>')
         rows.append(
-            f'<tr{row_cls}><td class="video-identity">'
-            f'<div class="video-title">{e(video["title"])}</div>'
-            f'<div class="video-code mono" title="{e(video["code"])}">{e(video["code"])}</div></td>'
-            f'<td>{e(video["vtype"])}</td><td><span class="pill {e(badge_cls)}">'
-            f'{e(video["status"].replace("_", " "))}</span></td>'
-            f'<td class="progress-cell">{progress}</td><td class="num">{e(fmt_age(video["age_h"]))}</td>'
-            f'<td class="num muted">{sla_txt}</td><td class="num">{video["review_rounds"]}</td></tr>')
-    return ('<div class="table-wrap"><table class="course-video-table">'
-            '<thead><tr><th>Video</th><th>Type</th><th>Status</th><th>Pipeline progress</th>'
-            '<th class="num">Time in state</th><th class="num">SLA</th><th class="num">Reviews</th></tr></thead>'
-            f'<tbody>{"".join(rows)}</tbody></table></div>')
+            '<div class="vrow vt-grid">'
+            f'<div><div class="v-title">{e(v["title"])}</div>'
+            f'<div class="v-code" title="{e(v["code"])}">{e(v["code"])}</div></div>'
+            f'<div class="v-type">{e(v["vtype"])}</div>'
+            f'<div><span class="pill {tone}">{e(v["status"].replace("_", " "))}</span></div>'
+            f'{prog}'
+            f'<div class="v-tis r">{e(fmt_age(v["age_h"]))}</div>'
+            f'<div class="v-sla r">{sla_txt}</div>'
+            f'<div class="v-rev r">{v["review_rounds"]}</div></div>'
+        )
+    head = ('<div class="vt-head vt-grid"><div>Video</div><div>Type</div><div>Status</div>'
+            '<div>Pipeline progress</div><div class="r">Time in state</div>'
+            '<div class="r">SLA</div><div class="r">Reviews</div></div>')
+    return f'<div class="card vtable">{head}{"".join(rows)}</div>'
 
 
 # --------------------------------------------------------------------------- #
@@ -612,194 +631,451 @@ def render_course_video_table(course):
 
 CSS = """
 :root{
-  color-scheme:dark;--canvas:#071018;--surface:#0e1b27;--surface-raised:#122231;
-  --surface-soft:#0b1722;--line:rgba(154,181,207,.15);--line-strong:rgba(154,181,207,.24);
-  --text:#f4f8fb;--muted:#91a5b8;--faint:#647b90;--brand:#e2b64e;--brand-strong:#c9992f;
-  --brand-soft:rgba(226,182,78,.12);--green:#46d69a;--green-soft:rgba(70,214,154,.11);
-  --red:#ff6b77;--red-soft:rgba(255,107,119,.12);--yellow:#f5c66a;
-  --yellow-soft:rgba(245,198,106,.12);--amber:#f0a65a;--amber-soft:rgba(240,166,90,.12);
-  --blue:#72aaff;--blue-soft:rgba(114,170,255,.12);--teal:#59d9cf;
-  --teal-soft:rgba(89,217,207,.12);--cyan:#5fd3ea;--cyan-soft:rgba(95,211,234,.12);
-  --neutral:#a1afbd;--neutral-soft:rgba(161,175,189,.10);--shadow:0 28px 80px rgba(0,0,0,.26)
+  color-scheme:dark;
+  --canvas:#070b12;--card:linear-gradient(180deg,#111a29 0%,#0b111c 100%);
+  --line:rgba(255,255,255,.07);--hair:rgba(255,255,255,.06);--hair-soft:rgba(255,255,255,.04);
+  --inset:rgba(255,255,255,.03);--track:rgba(255,255,255,.06);
+  --gold:#e2b64e;--gold-light:#f0cf7a;--gold-soft:rgba(226,182,78,.12);
+  --green:#3ecf8e;--green-soft:rgba(62,207,142,.13);
+  --blue:#6b8cff;--blue-soft:rgba(107,140,255,.14);
+  --red:#f87171;--red-soft:rgba(248,113,113,.13);
+  --yellow:#f5c66a;--yellow-soft:rgba(245,198,106,.14);
+  --teal:#59d9cf;--teal-soft:rgba(89,217,207,.14);
+  --cyan:#5fd3ea;--cyan-soft:rgba(95,211,234,.14);
+  --amber:#f0a65a;--amber-soft:rgba(240,166,90,.14);
+  --neutral:#8a93a3;--neutral-soft:rgba(138,147,163,.12);
+  --t-bright:#f6f8fc;--t-strong:#f2f5fa;--t-head:#eef2f8;--t-body:#e8ecf3;
+  --t-muted:#8a93a3;--t-soft:#c3cad6;--t-dim:#7d8698;--t-faint:#5a6373;--t-faintest:#4d5766;
+  --fd:'Space Grotesk',system-ui,-apple-system,sans-serif;
+  --fm:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+  --fb:'IBM Plex Sans',system-ui,-apple-system,sans-serif;
 }
 *{box-sizing:border-box}html{margin:0;padding:0;scroll-behavior:smooth}
-body{margin:0;min-height:100vh;background:radial-gradient(circle at 12% -5%,rgba(226,182,78,.13),transparent 30rem),radial-gradient(circle at 88% 0,rgba(114,170,255,.10),transparent 28rem),var(--canvas);color:var(--text);font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
-body::before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.22;background-image:linear-gradient(rgba(255,255,255,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.025) 1px,transparent 1px);background-size:48px 48px;mask-image:linear-gradient(to bottom,#000,transparent 72%)}
-.wrap{position:relative;z-index:1;max-width:1240px;margin:0 auto;padding:28px 24px 72px}
-.site-header{display:flex;align-items:center;justify-content:space-between;gap:24px;margin-bottom:24px}
-.brand-lockup{display:flex;align-items:center;gap:13px;min-width:0;color:inherit;text-decoration:none}
-.brand-logo{display:block;height:42px;width:auto}
-.brand-kicker,.section-kicker,.metric-top{text-transform:uppercase;letter-spacing:.13em;font-size:10.5px;font-weight:800}
-.brand-kicker{color:var(--brand);margin-bottom:1px}
-.header-meta{display:flex;align-items:center;justify-content:flex-end;gap:12px;color:var(--muted);font-size:12px}.header-meta b{color:var(--text)}
-.live-chip{display:inline-flex;align-items:center;gap:7px;padding:7px 10px;border:1px solid rgba(70,214,154,.22);border-radius:999px;background:var(--green-soft);color:#9cf0ca;font-weight:700}.live-dot{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 0 4px rgba(70,214,154,.10)}
-.hero{position:relative;display:grid;grid-template-columns:minmax(0,1.45fr) minmax(260px,.55fr);gap:28px;overflow:hidden;padding:34px;border:1px solid var(--line-strong);border-radius:24px;background:linear-gradient(135deg,rgba(18,34,49,.98),rgba(10,23,34,.97));box-shadow:var(--shadow)}
-.hero::after{content:"";position:absolute;width:330px;height:330px;border-radius:50%;right:-140px;top:-185px;background:rgba(226,182,78,.14);filter:blur(8px);pointer-events:none}
-.hero-copy{position:relative;z-index:1;display:flex;align-items:center}.summary-grid{display:grid;width:100%;grid-template-columns:repeat(4,minmax(90px,1fr));gap:10px}
-.summary-item{padding:14px 15px;border:1px solid var(--line);border-radius:14px;background:rgba(5,14,21,.33)}.summary-value{font-size:25px;font-weight:780;line-height:1;font-variant-numeric:tabular-nums;letter-spacing:-.035em}.summary-label{margin-top:6px;color:var(--muted);font-size:11.5px}.summary-item.alert .summary-value{color:var(--red)}
-.health-card{position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:250px;padding:24px;border:1px solid var(--line);border-radius:19px;background:rgba(4,13,20,.38)}
-.health-ring{--completion:0%;position:relative;display:grid;place-items:center;width:154px;height:154px;border-radius:50%;background:conic-gradient(var(--brand) var(--completion),rgba(255,255,255,.07) 0);box-shadow:0 0 42px rgba(226,182,78,.12)}.health-ring::before{content:"";position:absolute;width:126px;height:126px;border-radius:50%;background:var(--surface-soft)}
-.health-inner{position:relative;z-index:1;text-align:center}.health-value{display:block;font-size:36px;font-weight:820;line-height:1;letter-spacing:-.05em}.health-unit{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.12em;font-weight:750}.health-title{margin-top:16px;font-size:13px;font-weight:700}.health-sub{margin-top:3px;color:var(--muted);font-size:11.5px;text-align:center}
-.dashboard-section{margin-top:48px}.section-heading{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;margin-bottom:16px}.section-kicker{color:var(--brand);margin-bottom:4px}.section-title{margin:0;font-size:22px;line-height:1.2;letter-spacing:-.025em}.section-copy{max-width:470px;margin:5px 0 0;color:var(--muted);font-size:13px}.section-aside{color:var(--faint);font-size:11.5px;white-space:nowrap}
-.muted{color:var(--muted)}.mono{font-family:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace;font-size:12px;word-break:break-word}
-.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}.card{--tone:var(--neutral);--tone-soft:var(--neutral-soft);min-width:0;padding:17px 18px 16px;border:1px solid var(--line);border-radius:16px;background:linear-gradient(155deg,var(--surface-raised),var(--surface));transition:transform .2s ease,border-color .2s ease}.card:hover{transform:translateY(-2px);border-color:var(--line-strong)}
-.card.green{--tone:var(--green);--tone-soft:var(--green-soft)}.card.red{--tone:var(--red);--tone-soft:var(--red-soft)}.card.yellow{--tone:var(--yellow);--tone-soft:var(--yellow-soft)}.card.amber{--tone:var(--amber);--tone-soft:var(--amber-soft)}.card.blue{--tone:var(--blue);--tone-soft:var(--blue-soft)}.card.teal{--tone:var(--teal);--tone-soft:var(--teal-soft)}.card.cyan{--tone:var(--cyan);--tone-soft:var(--cyan-soft)}
-.card-head{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:11px;font-weight:750;text-transform:uppercase;letter-spacing:.08em}.status-dot{width:7px;height:7px;border-radius:50%;background:var(--tone);box-shadow:0 0 0 4px var(--tone-soft)}.card-value-row{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-top:20px}.card-n{font-size:36px;font-weight:820;line-height:1;letter-spacing:-.045em}.card-share{color:var(--tone);font-size:12px;font-weight:750}.card-meter{height:4px;margin-top:14px;overflow:hidden;border-radius:99px;background:rgba(255,255,255,.06)}.card-meter span{display:block;height:100%;border-radius:inherit;background:var(--tone)}.card-l{margin-top:8px;color:var(--faint);font-size:11px}
-.state-message{display:flex;align-items:center;gap:14px;padding:19px 20px;border:1px solid rgba(70,214,154,.18);border-radius:16px;background:linear-gradient(90deg,var(--green-soft),rgba(70,214,154,.03))}.state-message.compact{padding:16px 18px}.state-icon{display:grid;place-items:center;flex:0 0 auto;width:34px;height:34px;border-radius:11px;background:rgba(70,214,154,.14);color:#9cf0ca;font-weight:900}.state-message strong{font-size:13px}.state-message p{margin:2px 0 0;color:var(--muted);font-size:12px}.queue-heading{margin-top:18px}
-.table-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:16px;background:var(--surface)}table{width:100%;border-collapse:collapse;font-size:13px}thead th{padding:11px 14px;text-align:left;white-space:nowrap;color:var(--faint);background:var(--surface-raised);border-bottom:1px solid var(--line);font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.08em}tbody td{padding:12px 14px;border-bottom:1px solid var(--line)}tbody tr:last-child td{border-bottom:0}tbody tr:hover{background:rgba(255,255,255,.018)}td.num,th.num{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}tr.over{background:var(--red-soft)}tr.over td:first-child{box-shadow:inset 3px 0 0 var(--red)}
-.pill{display:inline-flex;padding:3px 8px;border-radius:999px;border:1px solid transparent;font-size:10.5px;font-weight:750;white-space:nowrap;text-transform:capitalize}.pill.green{background:var(--green-soft);color:#91ecc2}.pill.red{background:var(--red-soft);color:#ff9ca4}.pill.yellow{background:var(--yellow-soft);color:#f8d891}.pill.amber{background:var(--amber-soft);color:#f5c18b}.pill.blue{background:var(--blue-soft);color:#a7c8ff}.pill.teal{background:var(--teal-soft);color:#95ece6}.pill.cyan{background:var(--cyan-soft);color:#9ee9f6}.pill.neutral{background:var(--neutral-soft);color:#c5cdd5}
-.stale-list{display:grid;gap:10px;list-style:none;margin:0;padding:0}.stale-list li{padding:14px 16px;border:1px solid rgba(255,107,119,.20);border-radius:14px;background:var(--red-soft)}.over-by{color:#ff9ca4;font-weight:750}
-.metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px}.metric{min-width:0;padding:19px;border:1px solid var(--line);border-radius:16px;background:linear-gradient(155deg,var(--surface-raised),var(--surface))}.metric-top{display:flex;align-items:center;justify-content:space-between;color:var(--faint)}.metric-mark{width:18px;height:3px;border-radius:9px;background:var(--brand)}.metric-v{margin-top:25px;font-size:35px;font-weight:820;line-height:1;letter-spacing:-.045em}.metric-k{margin-top:8px;font-size:12.5px;font-weight:720}.metric-s{min-height:35px;margin-top:4px;color:var(--muted);font-size:11.5px}
-.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.panel{min-width:0;padding:20px;border:1px solid var(--line);border-radius:18px;background:linear-gradient(155deg,var(--surface-raised),var(--surface))}.panel-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:18px}.panel h3{margin:0;font-size:14px}.panel-note{color:var(--faint);font-size:10.5px}
-.bars{display:flex;flex-direction:column;gap:12px}.bar-row{display:grid;grid-template-columns:minmax(90px,130px) 1fr auto;align-items:center;gap:11px}.bar-label{min-width:0;overflow:hidden;color:var(--muted);font-size:11.5px;text-overflow:ellipsis;white-space:nowrap}.course-link{display:inline-flex;align-items:center;gap:5px;max-width:100%;color:var(--muted);text-decoration:none}.course-link span{color:var(--brand);font-size:9px}.course-link:hover{color:var(--text)}
-.faculty-group{margin-top:20px}.faculty-group:first-child{margin-top:0}.faculty-head{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap;margin-bottom:11px;padding-bottom:8px;border-bottom:1px solid var(--line)}.faculty-name{font-size:13px;font-weight:750;color:var(--text)}.faculty-slug{color:var(--brand);font-size:10px;font-weight:800;letter-spacing:.06em}.faculty-agg{margin-left:auto;font-size:11px}
-.bar-track{display:flex;overflow:hidden;height:9px;border-radius:99px;background:rgba(255,255,255,.06)}.bar-seg{height:100%}.bar-seg.green{background:linear-gradient(90deg,#2fbd85,var(--green))}.bar-seg.blue{background:var(--blue)}.bar-seg.teal{background:linear-gradient(90deg,#35bdb3,var(--teal))}.bar-seg.cyan{background:linear-gradient(90deg,var(--blue),var(--cyan))}.bar-val{min-width:54px;text-align:right;font-size:11.5px;font-weight:700}.legend{display:flex;gap:14px;margin-top:16px;color:var(--muted);font-size:10.5px}.legend .sw{display:inline-block;width:7px;height:7px;margin-right:5px;border-radius:50%}.sw.green{background:var(--green)}.sw.blue{background:var(--blue)}
-.chart{display:flex;align-items:flex-end;gap:7px;height:165px;padding-top:20px;overflow-x:auto}.cbar-col{display:flex;flex:1 1 0;min-width:25px;height:100%;flex-direction:column;align-items:center;justify-content:flex-end}.cbar{width:64%;max-width:32px;min-height:2px;border-radius:5px 5px 2px 2px;background:linear-gradient(180deg,var(--brand),var(--brand-strong))}.cbar[data-zero]{background:rgba(255,255,255,.07)}.cbar-n{margin-bottom:4px;color:#efce87;font-size:10.5px;font-weight:750}.cbar-x{margin-top:7px;color:var(--muted);font-size:10px}.cbar-y{font-size:9px}.chart-note{margin:0 0 12px;font-size:11.5px;line-height:1.45}
-.site-footer{display:flex;align-items:center;justify-content:space-between;gap:20px;margin-top:48px;padding-top:20px;border-top:1px solid var(--line);color:var(--faint);font-size:11px}.site-footer a{color:var(--muted);text-decoration:none}.site-footer a:hover{color:var(--brand)}.footer-badge{display:inline-flex;align-items:center;gap:7px;white-space:nowrap}.footer-badge::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--brand)}
-.course-hero .hero-copy{display:block}.back-link{display:inline-flex;align-items:center;gap:7px;margin-bottom:22px;color:var(--muted);font-size:11.5px;font-weight:700;text-decoration:none}.back-link:hover{color:var(--brand)}.course-code{color:var(--brand);font-family:"SFMono-Regular",Consolas,monospace;font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase}.course-name{margin:7px 0 0;font-size:clamp(31px,5vw,48px);line-height:1.04;letter-spacing:-.045em}.course-description{max-width:620px;margin:12px 0 24px;color:var(--muted);font-size:13px}.course-video-table td{vertical-align:middle}.video-identity{min-width:235px}.video-title{color:var(--text);font-size:12.5px;font-weight:700}.video-code{max-width:360px;margin-top:3px;overflow:hidden;color:var(--faint);font-size:10px;text-overflow:ellipsis;white-space:nowrap}.progress-cell{min-width:145px}.video-progress-row{display:flex;align-items:center;gap:9px}.video-progress-track{width:92px;height:6px;overflow:hidden;border-radius:99px;background:rgba(255,255,255,.07)}.video-progress-fill{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,var(--brand-strong),var(--brand))}.video-progress-value{min-width:31px;color:var(--muted);font-size:10.5px;text-align:right}.video-progress-na{color:var(--faint);font-size:10.5px}
-@media(max-width:900px){.hero{grid-template-columns:1fr}.health-card{min-height:210px}.metrics{grid-template-columns:1fr 1fr}.metric:last-child{grid-column:1/-1}}
-@media(max-width:700px){.wrap{padding:20px 15px 52px}.site-header{align-items:flex-start}.header-meta{align-items:flex-end;flex-direction:column;gap:6px;text-align:right}.hero{padding:24px;border-radius:20px}.summary-grid{grid-template-columns:1fr 1fr}.grid2,.metrics{grid-template-columns:1fr}.metric:last-child{grid-column:auto}.section-heading{align-items:flex-start;flex-direction:column;gap:5px}.section-aside{white-space:normal}.bar-row{grid-template-columns:84px 1fr auto}.site-footer{align-items:flex-start;flex-direction:column}}
-@media(max-width:430px){.brand-logo{height:33px}.header-time{display:none}.health-ring{width:140px;height:140px}.health-ring::before{width:114px;height:114px}.summary-item{padding:12px}.summary-value{font-size:22px}.card{padding:16px}}
-@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}.card{transition:none}}
+body{margin:0;min-height:100vh;background:radial-gradient(1200px 520px at 72% -12%,rgba(226,182,78,.07),transparent 60%),radial-gradient(900px 500px at 8% 4%,rgba(62,207,142,.05),transparent 55%),var(--canvas);color:var(--t-body);font-family:var(--fb);font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+a{color:var(--gold);text-decoration:none}a:hover{color:var(--gold-light)}
+.wrap{max-width:1200px;margin:0 auto;padding:26px 28px 40px}
+@keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.view{animation:fadeUp .4s ease both}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}.view{animation:none}}
+
+/* Top bar */
+.topbar{display:flex;justify-content:space-between;align-items:center;gap:20px;padding:6px 2px 26px}
+.brand{display:flex;align-items:center;gap:13px;min-width:0;color:inherit;text-decoration:none}
+.brand-logo{display:block;width:42px;height:42px;flex:none}
+.wordmark{font-family:var(--fd);font-weight:700;font-size:22px;letter-spacing:-.01em;color:var(--t-strong)}.wordmark span{color:var(--gold)}
+.topmeta{display:flex;align-items:center;gap:22px}
+.live{display:inline-flex;align-items:center;gap:8px;padding:6px 13px;border:1px solid rgba(62,207,142,.3);border-radius:99px;background:rgba(62,207,142,.08)}
+.live-dot{width:7px;height:7px;border-radius:99px;background:var(--green);box-shadow:0 0 8px var(--green)}
+.live-txt{font-family:var(--fm);font-size:11px;letter-spacing:.06em;color:var(--green)}
+.metaline{font-family:var(--fm);font-size:12px;color:var(--t-faint);white-space:nowrap}.metaline b{font-weight:500;color:var(--t-soft)}
+
+/* Cards / sections */
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px}
+.section{margin-top:44px}
+.section-head{display:flex;justify-content:space-between;align-items:flex-end;gap:20px;margin-bottom:18px}
+.eyebrow{font-family:var(--fm);font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--gold);margin-bottom:10px}
+.h1{margin:0;font-family:var(--fd);font-weight:700;font-size:34px;letter-spacing:-.02em;color:var(--t-bright);line-height:1.04}
+.h2{margin:0;font-family:var(--fd);font-weight:600;font-size:26px;letter-spacing:-.01em;color:var(--t-head)}
+.lead{margin:9px 0 0;font-size:13.5px;line-height:1.5;color:var(--t-muted);max-width:520px;text-wrap:pretty}
+.aside{font-family:var(--fm);font-size:11px;color:var(--t-faint);white-space:nowrap}
+
+/* Hero */
+.hero{position:relative;overflow:hidden;display:grid;grid-template-columns:1fr 300px;gap:40px;align-items:center;padding:32px 36px;border-radius:20px}
+.hero-glow{position:absolute;top:-40%;right:18%;width:340px;height:340px;background:radial-gradient(circle,rgba(226,182,78,.13),transparent 65%);pointer-events:none}
+.hero-copy{position:relative}
+.hero .lead{margin:9px 0 22px;font-size:14px;line-height:1.55;max-width:440px}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.kpi{background:var(--inset);border:1px solid var(--line);border-radius:13px;padding:15px 16px}
+.kpi-v{font-family:var(--fd);font-weight:600;font-size:30px;line-height:1}
+.kpi-l{margin-top:7px;font-size:12px;color:var(--t-dim)}
+.c-bright{color:var(--t-strong)}.c-green{color:var(--green)}.c-gold{color:var(--gold)}.c-blue{color:var(--blue)}.c-red{color:var(--red)}.c-faint{color:var(--t-faint)}
+.progline{margin-top:22px}
+.prog-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px}
+.prog-cap{font-family:var(--fm);font-size:11px;letter-spacing:.1em;color:var(--t-muted)}
+.prog-val{font-family:var(--fm);font-size:12px;color:var(--t-soft)}
+.bar8{height:8px;background:var(--track);border-radius:99px;overflow:hidden}
+.bar8-fill{height:100%;border-radius:99px;background:linear-gradient(90deg,var(--gold-light),var(--gold))}
+.ring-wrap{display:flex;flex-direction:column;align-items:center}
+.ring{position:relative;width:200px;height:200px}
+.ring svg{display:block}
+.ring-c{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.ring-pct{font-family:var(--fd);font-weight:700;font-size:42px;line-height:1;color:var(--t-bright)}
+.ring-cap{font-family:var(--fm);font-size:10px;letter-spacing:.22em;color:var(--gold);margin-top:4px}
+.ring-sub{text-align:center;margin-top:14px}
+.ring-title{font-family:var(--fd);font-weight:500;font-size:14px;color:var(--t-head)}
+.ring-note{font-family:var(--fm);font-size:11.5px;color:var(--t-faint);margin-top:3px}
+
+/* Pipeline cards */
+.two{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.pcard{padding:22px 24px}
+.pcard-head{display:flex;align-items:center;gap:9px;font-family:var(--fm);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--t-muted)}
+.dot{width:8px;height:8px;border-radius:99px;background:var(--c,var(--neutral))}
+.pcard-row{display:flex;justify-content:space-between;align-items:flex-end;margin:16px 0 14px}
+.pcard-n{font-family:var(--fd);font-weight:600;font-size:46px;line-height:.9;color:var(--t-bright)}
+.pcard-pct{font-family:var(--fd);font-weight:600;font-size:20px;color:var(--c,var(--neutral))}
+.bar6{height:6px;background:var(--track);border-radius:99px;overflow:hidden}
+.bar6-fill{height:100%;border-radius:99px;background:var(--c,var(--neutral))}
+.pcard-foot{margin-top:12px;font-family:var(--fm);font-size:11px;color:var(--t-faint)}
+
+/* Courses */
+.courses{display:grid;grid-template-columns:1.7fr 1fr;gap:16px;align-items:start}
+.part{padding:22px 24px}
+.part-label{font-family:var(--fm);font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--gold);margin-bottom:18px}
+.fac+.fac{margin-top:24px}
+.fac-head{display:flex;justify-content:space-between;align-items:baseline;gap:14px;margin-bottom:16px}
+.fac-id{display:flex;align-items:center;gap:10px;min-width:0}
+.fac-name{font-family:var(--fd);font-weight:600;font-size:15px;color:var(--t-head)}
+.fac-code{font-family:var(--fm);font-size:10.5px;letter-spacing:.06em;color:var(--gold);background:var(--gold-soft);padding:3px 8px;border-radius:6px;white-space:nowrap}
+.fac-sum{font-family:var(--fm);font-size:11.5px;color:var(--t-faint);white-space:nowrap}
+.fac-rows{display:flex;flex-direction:column;gap:14px}
+.crow{display:grid;grid-template-columns:180px 1fr auto;gap:18px;align-items:center;cursor:pointer;padding:5px 8px;margin:-5px -8px;border-radius:9px;transition:background .15s;color:inherit;text-decoration:none}
+.crow:hover{background:rgba(255,255,255,.045)}
+.crow-name{display:flex;align-items:center;gap:6px;min-width:0}
+.crow-name b{font-weight:400;font-size:13.5px;color:#d6dbe4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.crow-name i{font-style:normal;font-size:12px;color:var(--t-faint);flex:none}
+.stack{height:9px;background:var(--track);border-radius:99px;overflow:hidden;display:flex}
+.stack .seg{height:100%}.seg.green{background:var(--green)}.seg.blue{background:var(--blue)}
+.crow-ratio{font-family:var(--fm);font-size:12.5px;white-space:nowrap;text-align:right;min-width:44px}.crow-ratio b{color:var(--t-strong);font-weight:500}.crow-ratio span{color:var(--t-faint)}
+.legend{display:flex;align-items:center;gap:18px;margin-top:20px;padding-top:16px;border-top:1px solid var(--hair)}
+.leg{display:flex;align-items:center;gap:7px;font-family:var(--fm);font-size:11px;color:var(--t-muted)}
+.leg-dot{width:8px;height:8px;border-radius:99px}
+.tmix{display:flex;flex-direction:column;gap:20px}
+.trow-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:9px}
+.trow-name{font-family:var(--fd);font-weight:500;font-size:14px;color:var(--t-body);text-transform:capitalize}
+.trow-val{font-family:var(--fm);font-size:12px;color:var(--t-soft)}.trow-val b{color:var(--t-strong);font-weight:400}
+.bar9{height:9px;background:var(--track);border-radius:99px;overflow:hidden}
+.bar9-fill{height:100%;border-radius:99px;background:var(--c,var(--gold))}
+
+/* Delivery + throughput */
+.delivery{display:grid;grid-template-columns:2fr 1fr;gap:16px}
+.chartcard{padding:22px 24px}
+.chart-title{font-family:var(--fd);font-weight:500;font-size:15px;color:var(--t-head);margin-bottom:6px}
+.chart{position:relative;height:150px;display:flex;align-items:flex-end;gap:10px;margin-top:20px}
+.col{flex:1;display:flex;flex-direction:column;align-items:center;gap:9px;height:100%;justify-content:flex-end;min-width:0}
+.col-bar{width:100%;border-radius:3px;background:linear-gradient(180deg,var(--gold-light),var(--gold))}
+.col-bar.zero{background:rgba(226,182,78,.16)}
+.col-x{font-family:var(--fm);font-size:9.5px;color:var(--t-faintest)}
+.chart-empty{position:absolute;inset:0 0 22px 0;display:flex;align-items:center;justify-content:center;pointer-events:none}
+.chart-empty span{font-family:var(--fm);font-size:11px;color:var(--t-faint);text-align:center;max-width:360px;line-height:1.5;background:rgba(7,11,18,.6);padding:6px 14px;border-radius:8px}
+.through{display:flex;flex-direction:column;gap:12px}
+.tcard{padding:15px 18px;border-radius:14px}
+.tcard-l{font-family:var(--fm);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--t-muted)}
+.tcard-v{font-family:var(--fd);font-weight:600;font-size:26px;line-height:1;margin:8px 0 6px;color:var(--t-bright)}.tcard-v span{color:var(--t-faint)}
+.tcard-s{font-size:11.5px;line-height:1.45;color:var(--t-faint)}
+
+/* SLA banner */
+.sla{display:flex;gap:18px;align-items:center;padding:22px 26px;border-radius:16px;border:1px solid var(--green-soft);background:linear-gradient(90deg,rgba(62,207,142,.11),rgba(62,207,142,.02))}
+.sla.risk{border-color:rgba(248,113,113,.3);background:linear-gradient(90deg,rgba(248,113,113,.11),rgba(248,113,113,.02))}
+.sla-icon{flex:none;width:44px;height:44px;border-radius:99px;background:rgba(62,207,142,.16);display:flex;align-items:center;justify-content:center}
+.sla.risk .sla-icon{background:rgba(248,113,113,.16)}
+.sla-body{flex:1;min-width:0}
+.sla-title{font-family:var(--fd);font-weight:600;font-size:17px;color:var(--t-head)}
+.sla-sub{margin-top:3px;font-size:13px;color:var(--t-muted)}
+.sla-count{font-family:var(--fm);font-size:12px;color:var(--green);white-space:nowrap}.sla.risk .sla-count{color:var(--red)}
+.sla-list{list-style:none;margin:8px 0 0;padding:0;display:grid;gap:7px}
+.sla-list a{color:var(--t-body)}.sla-list a:hover{color:var(--gold)}.sla-list .over{color:var(--red);font-family:var(--fm);font-size:12px}
+.sla-list .code{font-family:var(--fm);font-size:11px;color:var(--t-faintest)}
+
+/* Course detail */
+.back{display:inline-flex;align-items:center;gap:7px;cursor:pointer;font-size:13px;color:var(--t-muted);margin-bottom:16px;transition:color .15s}
+.back:hover{color:var(--gold)}.back span{font-size:15px}
+.course-code{font-family:var(--fm);font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--gold);margin-bottom:10px}
+.hero.course h1{font-size:40px}
+.vtable{overflow:hidden}
+.vt-grid{display:grid;grid-template-columns:2.2fr .9fr 1fr 1.5fr .9fr .7fr .8fr;gap:16px;align-items:center}
+.vt-head{padding:14px 24px;border-bottom:1px solid var(--hair);font-family:var(--fm);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--t-faint)}
+.vt-head .r{text-align:right}
+.vrow{padding:18px 24px;border-bottom:1px solid var(--hair-soft)}.vrow:last-child{border-bottom:0}
+.v-title{font-family:var(--fd);font-weight:500;font-size:14px;color:var(--t-strong)}
+.v-code{margin-top:4px;font-family:var(--fm);font-size:10px;color:var(--t-faintest);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.v-type{font-size:12.5px;color:var(--t-muted);text-transform:capitalize}
+.pill{display:inline-flex;font-family:var(--fm);font-size:10.5px;letter-spacing:.04em;padding:4px 10px;border-radius:99px;text-transform:capitalize;color:var(--c,var(--neutral));background:var(--cs,var(--neutral-soft))}
+.v-prog{display:flex;align-items:center;gap:10px}
+.v-prog .bar5{flex:1;height:5px;background:var(--track);border-radius:99px;overflow:hidden}
+.v-prog .bar5 span{display:block;height:100%;border-radius:99px;background:var(--c,var(--neutral))}
+.v-prog .pct{font-family:var(--fm);font-size:11px;color:var(--t-muted);width:34px;text-align:right}
+.v-prog.off{color:var(--t-faint);font-family:var(--fm);font-size:11px}
+.r{text-align:right}
+.v-tis{font-family:var(--fm);font-size:12px;color:var(--t-soft)}
+.v-sla{font-family:var(--fm);font-size:12px;color:var(--t-muted)}
+.v-rev{font-family:var(--fm);font-size:12px;color:var(--t-soft)}
+.done{padding:40px;display:flex;flex-direction:column;align-items:center;text-align:center;gap:14px;border-color:rgba(62,207,142,.22)}
+.done-icon{width:52px;height:52px;border-radius:99px;background:rgba(62,207,142,.16);display:flex;align-items:center;justify-content:center}
+.done-title{font-family:var(--fd);font-weight:600;font-size:20px;color:var(--t-head)}
+.done-sub{font-size:13.5px;color:var(--t-muted);max-width:380px;line-height:1.5}
+
+/* Footer */
+.footer{margin-top:52px;padding-top:22px;border-top:1px solid var(--hair);display:flex;justify-content:space-between;align-items:center;gap:20px}
+.foot-l{font-family:var(--fm);font-size:11.5px;color:var(--t-faintest)}.foot-l span{color:var(--t-muted)}
+.foot-r{display:flex;align-items:center;gap:20px;font-family:var(--fm);font-size:11.5px;color:var(--t-faint)}
+.foot-badge{display:flex;align-items:center;gap:7px}.foot-badge::before{content:"";width:6px;height:6px;border-radius:99px;background:var(--gold)}
+
+/* Status tones (dot / pill / bar via --c/--cs) */
+.s-green{--c:var(--green);--cs:var(--green-soft)}
+.s-blue{--c:var(--blue);--cs:var(--blue-soft)}
+.s-gold{--c:var(--gold);--cs:var(--gold-soft)}
+.s-red{--c:var(--red);--cs:var(--red-soft)}
+.s-yellow{--c:var(--yellow);--cs:var(--yellow-soft)}
+.s-teal{--c:var(--teal);--cs:var(--teal-soft)}
+.s-cyan{--c:var(--cyan);--cs:var(--cyan-soft)}
+.s-amber{--c:var(--amber);--cs:var(--amber-soft)}
+.s-neutral{--c:var(--neutral);--cs:var(--neutral-soft)}
+
+/* Responsive */
+@media(max-width:900px){
+  .hero,.hero.course{grid-template-columns:1fr;gap:28px}
+  .ring-wrap{order:-1}
+  .courses{grid-template-columns:1fr}
+  .delivery{grid-template-columns:1fr}
+}
+@media(max-width:680px){
+  .wrap{padding:20px 16px 36px}
+  .topbar{flex-wrap:wrap;gap:14px}
+  .topmeta{gap:14px}
+  .kpis{grid-template-columns:1fr 1fr}
+  .two{grid-template-columns:1fr}
+  .h1,.hero.course h1{font-size:28px}
+  .h2{font-size:22px}
+  .section-head{flex-direction:column;align-items:flex-start;gap:6px}
+  .vt-head{display:none}
+  .vt-grid{grid-template-columns:1fr 1fr;gap:10px}
+  .vrow{padding:16px 18px}
+  .v-prog{grid-column:1/-1}
+  .footer{flex-direction:column;align-items:flex-start;gap:12px}
+}
 """
 
+# Fonts embedded as base64 woff2 so every page stays self-contained (no CDN /
+# no external request — the same rule as the logo). Source files live in
+# assets/fonts/ (OFL, from Google Fonts): Space Grotesk + IBM Plex Sans are
+# variable (one file spans their weights); IBM Plex Mono ships one file per
+# weight. They are read and inlined at build time, not referenced at runtime.
+_FONT_FILES = [
+    ("Space Grotesk", "400 700", "spacegrotesk.woff2"),
+    ("IBM Plex Sans", "400 500", "ibmplexsans.woff2"),
+    ("IBM Plex Mono", "400", "ibmplexmono400.woff2"),
+    ("IBM Plex Mono", "500", "ibmplexmono500.woff2"),
+    ("IBM Plex Mono", "600", "ibmplexmono600.woff2"),
+]
 
-# The CraftED brand lockup (mark + wordmark), inlined so the pages stay fully
-# self-contained — no external asset request, crisp on any DPI. Derived from
-# assets/Crafted Logo.svg (Illustrator export): its <defs><style> block with
-# generic .st0/.st1/.st2 class names is stripped and every fill is written as a
-# presentation attribute on the shape (fill="#e2b64e" gold / "#103c40" teal /
-# "#fff" white) so nothing leaks into or collides with the page stylesheet, and
-# the viewBox is tightened from the raw 2000x1000 artboard to the artwork's true
-# bounds (measured 161.41,298.85 -> 1845.81,714.86, 6px padding) so the lockup
-# fills its header slot instead of floating tiny in empty margin. Regenerate by
-# re-exporting the asset and re-running the same strip/flatten/tighten. Sized via
-# the .brand-logo CSS rule.
-LOGO_SVG = (
-    '<svg class="brand-logo" xmlns="http://www.w3.org/2000/svg" viewBox="155.41 292.85 1696.4 428.01" role="img" aria-label="CraftED">'
-    '<g>'
-    '<path fill="#fff" d="M853.73,639.22c-31.47,0-55.99-10.61-73.55-31.84-17.57-21.22-26.35-53.91-26.35-98.07s8.78-77.15,26.35-98.26c17.57-21.1,42.08-31.65,73.55-31.65,17.57,0,33.3,3.42,47.21,10.25,13.91,6.83,24.88,17.45,32.94,31.84,8.05,14.4,12.08,32.93,12.08,55.62h-47.94c0-19.52-4.09-33.97-12.26-43.36-8.18-9.39-18.85-14.09-32.02-14.09-17.33,0-30.25,7.14-38.79,21.41s-12.81,33.98-12.81,59.1v18.3c0,25.13,4.39,44.83,13.17,59.1,8.78,14.27,22.08,21.41,39.89,21.41,13.66,0,24.58-4.69,32.75-14.09,8.17-9.39,12.26-23.72,12.26-43h45.74c0,21.96-4.03,40.13-12.08,54.53s-18.97,25.13-32.75,32.2c-13.79,7.07-29.58,10.61-47.39,10.61h0Z"/>'
-    '<path fill="#fff" d="M978.15,634.83v-192.49h36.59l5.12,28.18h2.2c2.68-8.05,6.46-15.49,11.34-22.32,4.88-6.83,12.2-10.25,21.96-10.25,5.61,0,11.71.98,18.3,2.93v42.45h-15.74c-6.35,0-12.26,1.34-17.75,4.03s-9.88,7.2-13.17,13.54c-3.29,6.35-4.94,15.25-4.94,26.71v107.22h-43.91Z"/>'
-    '<path fill="#fff" d="M1128.19,639.22c-4.39,0-9.39-.73-15-2.2-5.61-1.46-10.92-4.15-15.92-8.05-5-3.9-9.15-9.39-12.44-16.47-3.29-7.07-4.94-16.22-4.94-27.45,0-17.32,4.08-30.86,12.26-40.62,8.17-9.75,19.45-16.65,33.85-20.68,14.39-4.03,30.86-6.04,49.4-6.04v-20.13c0-6.59-1.22-12.2-3.66-16.83-2.44-4.63-7.93-6.95-16.47-6.95-9.03,0-15.13,2.2-18.3,6.59-3.17,4.39-4.76,8.91-4.76,13.54v5.49h-42.82c-.25-1.22-.37-2.44-.37-3.66v-4.39c0-16.1,5.91-29.03,17.75-38.79,11.83-9.75,27.63-14.64,47.39-14.64,22.44,0,38.97,4.94,49.58,14.82s15.92,23.85,15.92,41.9v94.78c0,4.64,1.1,7.93,3.29,9.88,2.2,1.96,4.51,2.93,6.95,2.93h8.78v31.11c-2.44,1.22-5.74,2.5-9.88,3.84-4.15,1.34-9.51,2.01-16.1,2.01-8.78,0-16.1-2.32-21.96-6.95-5.85-4.63-9.88-10.73-12.08-18.3h-1.83c-5.37,7.56-11.59,13.67-18.66,18.3-7.08,4.63-17.08,6.95-30.01,6.95h.03,0ZM1146.48,602.63c7.07,0,12.68-1.95,16.83-5.86,4.15-3.9,7.19-9.02,9.15-15.37,1.95-6.34,2.93-13.29,2.93-20.86v-10.98c-8.54,0-16.65.91-24.33,2.74-7.69,1.83-13.97,5-18.85,9.51-4.88,4.52-7.32,10.92-7.32,19.21,0,6.59,1.7,11.84,5.12,15.74,3.41,3.91,8.9,5.86,16.47,5.86h0Z"/>'
-    '<path fill="#fff" d="M1264.32,634.83v-155.53h-19.39v-36.96h19.39v-23.42c0-8.54,1.34-16.77,4.03-24.7,2.68-7.92,7.32-14.39,13.91-19.4,6.59-5,15.74-7.5,27.45-7.5,5.12,0,10.8.43,17.02,1.28,6.22.86,11.16,1.89,14.82,3.11v32.57h-17.93c-10.25,0-15.37,5.25-15.37,15.74v22.32h33.3v36.96h-33.3v155.53h-43.93,0Z"/>'
-    '<path fill="#fff" d="M1409.6,639.22c-11.71,0-20.86-2.5-27.45-7.5s-11.22-11.46-13.91-19.4c-2.69-7.92-4.03-16.16-4.03-24.7v-108.32h-19.39v-36.96h19.39l6.59-54.16h37.33v54.16h27.81v36.96h-27.81v107.22c0,10.49,5.12,15.74,15.37,15.74h12.44v32.57c-3.17.97-7.32,1.95-12.44,2.93-5.12.97-9.76,1.46-13.91,1.46h.01Z"/>'
-    '<path fill="#e2b64e" d="M1463.39,634.83v-251.04h159.92v41.72h-113.08v60.01h96.97v41.72h-96.97v65.87h115.27v41.72h-162.11Z"/>'
-    '<path fill="#e2b64e" d="M1663.56,634.83v-251.04h81.61c31.22,0,55.81,10.19,73.74,30.56,17.93,20.37,26.9,50.81,26.9,91.3,0,42.94-8.97,75.2-26.9,96.79-17.93,21.59-42.51,32.39-73.74,32.39h-81.61ZM1710.4,593.12h30.37c17.32,0,31.11-6.52,41.35-19.58,10.25-13.05,15.37-32.63,15.37-58.73v-18.3c0-23.66-5.12-41.41-15.37-53.25-10.25-11.83-24.03-17.75-41.35-17.75h-30.37v167.6h0Z"/>'
-    '</g>'
-    '<g>'
+
+def _build_font_face_css():
+    rules = []
+    for family, weight, fname in _FONT_FILES:
+        path = os.path.join(_HERE, "assets", "fonts", fname)
+        if not os.path.exists(path):
+            raise SystemExit(f"error: embedded font missing at {path}")
+        with open(path, "rb") as fh:
+            b64 = base64.b64encode(fh.read()).decode("ascii")
+        rules.append(
+            f"@font-face{{font-family:'{family}';font-style:normal;"
+            f"font-weight:{weight};font-display:swap;"
+            f"src:url(data:font/woff2;base64,{b64}) format('woff2')}}"
+        )
+    return "".join(rules)
+
+
+FONT_FACE_CSS = _build_font_face_css()
+
+
+
+# The CraftED brand MARK, icon-only (gold tile + teal play/ring), inlined so the
+# pages stay self-contained — no external request, crisp on any DPI. Derived from
+# assets/Crafted Logo.svg: the tile <rect> plus the teal play/ring paths, with the
+# Illustrator <style> classes flattened to presentation-attribute fills
+# (fill="#e2b64e" gold / "#103c40" teal) so nothing collides with the page CSS,
+# and the viewBox tightened to the tile's bounds. The "CraftED" wordmark is set
+# beside it as live text in Space Grotesk (see render_header), not baked into the
+# SVG. Sized via the .brand-logo CSS rule.
+LOGO_MARK = (
+    '<svg class="brand-logo" xmlns="http://www.w3.org/2000/svg" viewBox="155.41 292.85 461.32 428.01" aria-hidden="true">'
     '<rect fill="#e2b64e" x="161.41" y="298.85" width="449.32" height="416.01" rx="74.26" ry="74.26"/>'
     '<path fill="#103c40" d="M405.43,644.82l-.51-3.57c14.38-2.04,28.23-6.42,41.18-13l1.64,3.22c-13.3,6.76-27.54,11.25-42.31,13.36ZM365.47,644.51c-13.97-2.22-27.5-6.63-40.21-13.12-.63-.32-1.25-.64-1.86-.97l1.69-3.19c.6.32,1.21.63,1.82.95,12.37,6.32,25.54,10.62,39.13,12.78l-.57,3.56ZM480.29,608.26l-2.51-2.6c10.37-10.03,18.99-21.69,25.62-34.67l3.26,1.55-.05.1c-6.8,13.32-15.66,25.3-26.31,35.61ZM291.23,606.68c-10.53-10.53-19.2-22.68-25.76-36.12l3.24-1.58c6.39,13.08,14.82,24.91,25.07,35.16l-2.55,2.55ZM519.36,534.68l-3.56-.63c1.31-7.44,1.97-15.04,1.97-22.61,0-6.86-.55-13.78-1.62-20.57l3.57-.57c1.11,6.98,1.67,14.09,1.67,21.14,0,7.77-.68,15.59-2.03,23.23ZM253.43,532.45c-1.12-7.01-1.68-14.15-1.68-21.22,0-7.74.68-15.53,2.01-23.15l3.56.62c-1.3,7.41-1.96,14.99-1.96,22.52,0,6.89.55,13.84,1.64,20.65l-3.57.57ZM504.46,453.77c-6.38-13.08-14.8-24.92-25.05-35.17l2.55-2.55c10.53,10.54,19.19,22.7,25.74,36.14l-3.25,1.58ZM269.66,451.82l-3.21-1.65.07-.13c6.83-13.37,15.7-25.37,26.39-35.69l2.51,2.6c-10.4,10.04-19.04,21.73-25.68,34.72l-.08.16ZM448.13,395.49c-.63-.33-1.26-.66-1.89-.98-12.35-6.31-25.49-10.6-39.05-12.76l.57-3.57c13.94,2.22,27.44,6.63,40.12,13.11.65.33,1.3.67,1.94,1.01l-1.69,3.19ZM327.1,394.39l-1.63-3.22c13.31-6.75,27.55-11.24,42.32-13.33l.51,3.57c-14.38,2.04-28.24,6.4-41.19,12.97Z"/>'
     '<path fill="#103c40" d="M371.69,644.35c-.02-8.31,6.71-15.05,15.02-15.06h0c8.31-.02,15.05,6.71,15.06,15.02h0c.02,8.31-6.71,15.06-15.02,15.07h-.02c-8.3,0-15.03-6.73-15.04-15.03ZM299.72,631.23c-6.73-4.88-8.22-14.29-3.34-21.01h0c4.88-6.73,14.28-8.22,21.01-3.34h0c6.72,4.88,8.22,14.28,3.34,21.01h0c-2.94,4.06-7.53,6.21-12.19,6.21h0c-3.06,0-6.15-.93-8.82-2.87ZM452.69,627.73c-4.9-6.71-3.42-16.12,3.29-21.02h0c6.71-4.9,16.13-3.42,21.02,3.29h0c4.9,6.72,3.42,16.13-3.29,21.02h0c-2.68,1.96-5.78,2.89-8.85,2.89h0c-4.65,0-9.23-2.14-12.17-6.18ZM245.82,557.32c-2.58-7.89,1.73-16.39,9.63-18.97h0c7.9-2.58,16.4,1.74,18.98,9.63h0c2.57,7.9-1.74,16.4-9.64,18.98h0c-1.55.5-3.12.74-4.67.74h0c-6.33,0-12.23-4.03-14.3-10.38ZM508.48,566.67c-7.91-2.56-12.24-11.04-9.68-18.95h0c2.56-7.9,11.05-12.24,18.95-9.67h0c7.9,2.56,12.24,11.04,9.68,18.95h0c-2.06,6.36-7.97,10.41-14.31,10.41h0c-1.54,0-3.1-.24-4.64-.74ZM255.36,484.79c-7.91-2.55-12.25-11.03-9.7-18.94h0c2.55-7.9,11.03-12.24,18.94-9.69h0c7.9,2.55,12.25,11.03,9.7,18.93h0c-2.06,6.38-7.96,10.43-14.32,10.43h0c-1.53,0-3.09-.23-4.62-.73ZM498.76,474.83c-2.57-7.9,1.75-16.39,9.66-18.96h0c7.9-2.57,16.39,1.75,18.95,9.66h0c2.57,7.9-1.75,16.38-9.65,18.95h0c-1.55.51-3.11.75-4.65.75h0c-6.34,0-12.24-4.04-14.31-10.4ZM296.02,412.79c-4.9-6.71-3.44-16.12,3.27-21.03h0c6.71-4.9,16.12-3.44,21.02,3.27h0c4.91,6.71,3.45,16.12-3.26,21.02h0c-2.68,1.96-5.79,2.91-8.87,2.91h0c-4.64-.01-9.21-2.14-12.16-6.17ZM455.87,415.89h0c-6.72-4.89-8.21-14.3-3.32-21.02h0c4.89-6.72,14.3-8.2,21.02-3.32h0c6.72,4.89,8.2,14.3,3.31,21.02h0c-2.94,4.05-7.52,6.2-12.17,6.2h0c-3.07,0-6.17-.94-8.84-2.88ZM371.21,378.39c-.02-8.31,6.7-15.06,15-15.08h.36c8.31,0,15.05,6.73,15.05,15.04h0c0,8.31-6.74,15.04-15.05,15.04h-.06c-.07.01-.15.01-.22.01h-.04c-8.29,0-15.03-6.72-15.04-15.01Z"/>'
     '<path fill="#103c40" d="M358.89,572.85c-.79.08-2.35.09-3.13,0-7.62-.9-10.5-8.52-10.69-15.26.18-35.37-.39-70.78.29-106.12,2.48-13.82,11.98-14.34,22.83-8.55,29.97,15.97,58.61,34.63,88.48,50.8,10.35,5.95,12.16,16.16,1.93,23.54-30.46,16.65-59.79,35.68-90.42,52-2.75,1.47-6.17,3.27-9.3,3.61v-.02h.01Z"/>'
-    '</g>'
     '</svg>'
 )
+
+
+def render_header(ts, brand_href=None):
+    """Top bar: brand (mark + Space Grotesk wordmark), live badge, timestamp."""
+    inner = (f'{LOGO_MARK}<span class="wordmark">Craft<span>ED</span></span>')
+    if brand_href:
+        brand = (f'<a class="brand" href="{e(brand_href)}" '
+                 'aria-label="CraftED — back to production overview">'
+                 f'{inner}</a>')
+    else:
+        brand = f'<div class="brand" aria-label="CraftED">{inner}</div>'
+    return (
+        f'<div class="topbar">{brand}<div class="topmeta">'
+        '<span class="live"><span class="live-dot" aria-hidden="true"></span>'
+        '<span class="live-txt">Live mirror</span></span>'
+        f'<span class="metaline">Updated <b>{e(ts)}</b></span>'
+        '<span class="metaline">Amman</span></div></div>'
+    )
+
+
+def render_footer():
+    return (
+        '<div class="footer"><div class="foot-l">Data from CraftED operations '
+        '&middot; generated by <span>generate.py</span></div>'
+        '<div class="foot-r"><span class="foot-badge">Read-only mirror</span>'
+        f'<a href="{e(REPO_URL)}">View repository</a></div></div>'
+    )
+
+
+def _doc_head(title, desc):
+    return (
+        '<!DOCTYPE html>\n<html lang="en"><head><meta charset="utf-8">'
+        '<meta name="viewport" content="width=device-width, initial-scale=1">'
+        '<meta http-equiv="refresh" content="1800">'
+        '<meta name="theme-color" content="#070b12">'
+        f'<meta name="description" content="{e(desc)}">'
+        f'<title>{e(title)}</title>'
+        f'<style>{FONT_FACE_CSS}{CSS}</style></head><body><div class="wrap">'
+    )
+
+
+def _hero_kpis(total, delivered, inflight, attention):
+    return render_kpis([
+        (total, "Total videos", "c-bright"),
+        (delivered, "Delivered", "c-green"),
+        (inflight, "In progress", "c-gold"),
+        (attention, "Need attention", "c-red" if attention else "c-faint"),
+    ])
 
 
 def render(d, gen_amman):
     ts = gen_amman.strftime("%Y-%m-%d %H:%M")
     completion = ((d["delivered_total"] / d["total_videos"] * 100)
                   if d["total_videos"] else 0)
-    attention_count = len(d["stale"])
-    parts = [f"""<!DOCTYPE html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="refresh" content="1800"><meta name="theme-color" content="#071018">
-<meta name="description" content="CraftED video production overview">
-<title>CraftED Production Control</title><style>{CSS}</style></head><body><div class="wrap">
-<header class="site-header"><div class="brand-lockup">{LOGO_SVG}</div>
-<div class="header-meta"><span class="live-chip"><span class="live-dot" aria-hidden="true"></span>Live mirror</span>
-<span class="header-time">Updated <b>{e(ts)}</b> · Amman</span></div></header><main>
-<section class="hero" aria-label="Production overview"><div class="hero-copy">
-<div class="summary-grid" aria-label="Production summary">
-<div class="summary-item"><div class="summary-value">{d["total_videos"]}</div><div class="summary-label">Total videos</div></div>
-<div class="summary-item"><div class="summary-value">{d["delivered_total"]}</div><div class="summary-label">Delivered</div></div>
-<div class="summary-item"><div class="summary-value">{d["inflight_total"]}</div><div class="summary-label">In progress</div></div>
-<div class="summary-item alert"><div class="summary-value">{attention_count}</div><div class="summary-label">Need attention</div></div>
-</div></div><aside class="health-card" aria-label="{completion:.0f}% of tracked videos delivered">
-<div class="health-ring" style="--completion:{completion:.2f}%"><div class="health-inner">
-<span class="health-value">{completion:.0f}%</span><span class="health-unit">complete</span></div></div>
-<div class="health-title">Overall delivery progress</div>
-<div class="health-sub">{d["delivered_total"]} of {d["total_videos"]} tracked videos delivered</div></aside></section>
-"""]
-    parts.append("""<section class="dashboard-section" aria-labelledby="pipeline-title">
-<div class="section-heading"><div><div class="section-kicker">01 · Pipeline</div>
-<h2 class="section-title" id="pipeline-title">Where the work stands</h2>
-<p class="section-copy">A live distribution of every tracked video across the production workflow.</p>
-</div><div class="section-aside">Refreshes automatically every 30 minutes</div></div>""")
-    parts.append(render_status_cards(d))
-    parts.append("</section>")
-    parts.append("""<section class="dashboard-section" aria-labelledby="attention-title">
-<div class="section-heading"><div><div class="section-kicker">02 · Attention</div>
-<h2 class="section-title" id="attention-title">SLA watch</h2>
-<p class="section-copy">Courses with one or more videos past their state SLA. Open a course to see the specific videos.</p>
-</div><div class="section-aside">Priority signal, not total volume</div></div>""")
-    parts.append(render_course_attention(d))
-    parts.append("</section>")
-    parts.append("""<section class="dashboard-section" aria-labelledby="performance-title">
-<div class="section-heading"><div><div class="section-kicker">03 · Performance</div>
-<h2 class="section-title" id="performance-title">Throughput &amp; delivery</h2>
-<p class="section-copy">Cycle speed, review effort and output volume in one compact view.</p>
-</div><div class="section-aside">Rolling operational history</div></div>""")
-    parts.append(render_metrics(d))
-    parts.append('<div class="grid2">')
-    parts.append('<article class="panel"><div class="panel-heading"><h3>Delivery by faculty &amp; course</h3><span class="panel-note">Delivered / total</span></div>' + render_course_totals(d) + '</article>')
-    parts.append('<article class="panel"><div class="panel-heading"><h3>Monthly deliveries</h3><span class="panel-note">Last 12 months</span></div>' + render_deliveries_chart(d) + '</article></div></section>')
-    parts.append("""<section class="dashboard-section" aria-labelledby="portfolio-title">
-<div class="section-heading"><div><div class="section-kicker">04 · Portfolio</div>
-<h2 class="section-title" id="portfolio-title">Content mix</h2>
-<p class="section-copy">How the current video library is distributed by format and course.</p></div></div><div class="grid2">""")
-    parts.append('<article class="panel"><div class="panel-heading"><h3>By video type</h3><span class="panel-note">Share of library</span></div>' + render_type_breakdown(d) + '</article>')
-    parts.append('<article class="panel"><div class="panel-heading"><h3>By course</h3><span class="panel-note">Share of library</span></div>' + render_course_breakdown(d) + '</article></div></section>')
-    parts.append(f"""</main><footer class="site-footer">
-<span>Data from CraftED operations · generated by <span class="mono">generate.py</span></span>
-<span class="footer-badge">Read-only mirror · <a href="{e(REPO_URL)}">View repository</a></span>
-</footer></div></body></html>""")
-    return "".join(parts)
+    attention = len(d["stale"])
+    ring = render_ring(completion, "ring-dash")
+    kpis = _hero_kpis(d["total_videos"], d["delivered_total"],
+                      d["inflight_total"], attention)
+    p = [_doc_head("CraftED Production Control",
+                   "CraftED video production overview")]
+    p.append(render_header(ts))
+    p.append('<div class="view">')
+    # Hero — delivery command center
+    p.append(
+        '<section class="card hero" aria-label="Production overview">'
+        '<div class="hero-glow" aria-hidden="true"></div>'
+        '<div class="hero-copy"><div class="eyebrow">Overview</div>'
+        '<h1 class="h1">Delivery command center</h1>'
+        '<p class="lead">The full production picture at a glance &mdash; how many '
+        'videos are tracked, delivered, and still moving through the pipeline '
+        'right now.</p>'
+        f'{kpis}'
+        '<div class="progline"><div class="prog-head">'
+        '<div class="prog-cap">Overall delivery progress</div>'
+        f'<div class="prog-val">{d["delivered_total"]} of {d["total_videos"]} delivered</div>'
+        '</div><div class="bar8">'
+        f'<div class="bar8-fill" style="width:{completion:.2f}%"></div></div></div></div>'
+        f'<div class="ring-wrap"><div class="ring">{ring}'
+        f'<div class="ring-c"><div class="ring-pct">{completion:.0f}%</div>'
+        '<div class="ring-cap">COMPLETE</div></div></div>'
+        '<div class="ring-sub"><div class="ring-title">Overall delivery progress</div>'
+        f'<div class="ring-note">{d["delivered_total"]} of {d["total_videos"]} '
+        'tracked videos delivered</div></div></div></section>'
+    )
+    # 01 · Pipeline
+    p.append(
+        '<section class="section" aria-label="Pipeline">'
+        '<div class="section-head"><div><div class="eyebrow">01 &middot; Pipeline</div>'
+        '<h2 class="h2">Where the work stands</h2>'
+        '<p class="lead">A live distribution of every tracked video across the '
+        'production workflow.</p></div>'
+        '<div class="aside">Refreshes every 30 min</div></div>'
+        f'{render_pipeline_cards(d)}</section>'
+    )
+    # 02 · Courses
+    p.append(
+        '<section class="section" aria-label="Courses">'
+        '<div class="section-head"><div><div class="eyebrow">02 &middot; Courses</div>'
+        '<h2 class="h2">Course tracker</h2>'
+        '<p class="lead">Delivery split across faculties and content formats. Open '
+        'any course to inspect its videos, states and review rounds.</p></div>'
+        '<div class="aside">Delivered / total</div></div>'
+        f'<div class="courses">{render_faculty(d)}{render_type_mix(d)}</div></section>'
+    )
+    # 03 · Delivery
+    p.append(
+        '<section class="section" aria-label="Delivery trend">'
+        '<div class="section-head"><div><div class="eyebrow">03 &middot; Delivery</div>'
+        '<h2 class="h2">Throughput &amp; delivery trend</h2>'
+        '<p class="lead">Volume delivered over time, alongside cycle speed, review '
+        'effort and output.</p></div>'
+        '<div class="aside">Last 12 months</div></div>'
+        f'<div class="delivery">{render_monthly(d)}{render_throughput(d)}</div></section>'
+    )
+    # 04 · Attention
+    p.append(
+        '<section class="section" aria-label="SLA watch">'
+        '<div class="section-head"><div><div class="eyebrow">04 &middot; Attention</div>'
+        '<h2 class="h2">SLA watch</h2></div></div>'
+        f'{render_sla_banner(d)}</section>'
+    )
+    p.append('</div>')
+    p.append(render_footer())
+    p.append('</div></body></html>')
+    return "".join(p)
 
 
 def render_course_page(course, gen_amman):
     ts = gen_amman.strftime("%Y-%m-%d %H:%M")
     completion = ((course["delivered_total"] / course["total_videos"] * 100)
                   if course["total_videos"] else 0)
-    video_word = "video" if course["total_videos"] == 1 else "videos"
-    page_title = f'{course["name"]} · CraftED Production Control'
-    return f"""<!DOCTYPE html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="refresh" content="1800"><meta name="theme-color" content="#071018">
-<meta name="description" content="Production progress for {e(course["name"])}">
-<title>{e(page_title)}</title><style>{CSS}</style></head><body><div class="wrap">
-<header class="site-header"><a class="brand-lockup" href="../../" aria-label="Back to production overview">
-{LOGO_SVG}</a>
-<div class="header-meta"><span class="live-chip"><span class="live-dot" aria-hidden="true"></span>Live mirror</span>
-<span class="header-time">Updated <b>{e(ts)}</b> · Amman</span></div></header><main>
-<section class="hero course-hero" aria-labelledby="course-title"><div class="hero-copy">
-<a class="back-link" href="../../"><span aria-hidden="true">←</span> All courses</a>
-<div class="course-code">{e(course["code"])}</div><h1 class="course-name" id="course-title">{e(course["name"])}</h1>
-<p class="course-description">A detailed view of every video in this course, its current workflow state and delivery progress.</p>
-<div class="summary-grid" aria-label="Course production summary">
-<div class="summary-item"><div class="summary-value">{course["total_videos"]}</div><div class="summary-label">Total videos</div></div>
-<div class="summary-item"><div class="summary-value">{course["delivered_total"]}</div><div class="summary-label">Delivered</div></div>
-<div class="summary-item"><div class="summary-value">{course["inflight_total"]}</div><div class="summary-label">In progress</div></div>
-<div class="summary-item alert"><div class="summary-value">{course["attention_count"]}</div><div class="summary-label">Need attention</div></div>
-</div></div><aside class="health-card" aria-label="{completion:.0f}% of course videos delivered">
-<div class="health-ring" style="--completion:{completion:.2f}%"><div class="health-inner">
-<span class="health-value">{completion:.0f}%</span><span class="health-unit">complete</span></div></div>
-<div class="health-title">Course delivery progress</div>
-<div class="health-sub">{course["delivered_total"]} of {course["total_videos"]} {video_word} delivered</div></aside></section>
-<section class="dashboard-section" aria-labelledby="course-pipeline-title">
-<div class="section-heading"><div><div class="section-kicker">01 · Course pipeline</div>
-<h2 class="section-title" id="course-pipeline-title">Status distribution</h2>
-<p class="section-copy">The current workflow state of every video in {e(course["name"])}.</p>
-</div><div class="section-aside">{course["total_videos"]} {video_word} tracked</div></div>
-{render_status_cards(course)}</section>
-<section class="dashboard-section" aria-labelledby="video-progress-title">
-<div class="section-heading"><div><div class="section-kicker">02 · Video detail</div>
-<h2 class="section-title" id="video-progress-title">Video progress</h2>
-<p class="section-copy">Titles, current states, pipeline completion and review rounds.</p>
-</div><div class="section-aside">Ordered by video title</div></div>{render_course_video_table(course)}</section>
-</main><footer class="site-footer"><span>Data from CraftED operations · generated by <span class="mono">generate.py</span></span>
-<span class="footer-badge">Read-only mirror · <a href="{e(REPO_URL)}">View repository</a></span>
-</footer></div></body></html>"""
+    vw = "video" if course["total_videos"] == 1 else "videos"
+    ring = render_ring(completion, "ring-detail")
+    kpis = _hero_kpis(course["total_videos"], course["delivered_total"],
+                      course["inflight_total"], course["attention_count"])
+    p = [_doc_head(f'{course["name"]} · CraftED Production Control',
+                   f'Production progress for {course["name"]}')]
+    p.append(render_header(ts, brand_href="../../"))
+    p.append('<div class="view">')
+    # Hero
+    p.append(
+        '<section class="card hero course" aria-label="Course overview">'
+        '<div class="hero-glow" aria-hidden="true"></div>'
+        '<div class="hero-copy">'
+        '<a class="back" href="../../"><span aria-hidden="true">&larr;</span> All courses</a>'
+        f'<div class="course-code">{e(course["code"])}</div>'
+        f'<h1 class="h1">{e(course["name"])}</h1>'
+        '<p class="lead">A detailed view of every video in this course &mdash; its '
+        'current workflow state and delivery progress.</p>'
+        f'{kpis}</div>'
+        f'<div class="ring-wrap"><div class="ring">{ring}'
+        f'<div class="ring-c"><div class="ring-pct">{completion:.0f}%</div>'
+        '<div class="ring-cap">COMPLETE</div></div></div>'
+        '<div class="ring-sub"><div class="ring-title">Course delivery progress</div>'
+        f'<div class="ring-note">{course["delivered_total"]} of {course["total_videos"]} '
+        f'{vw} delivered</div></div></div></section>'
+    )
+    # 01 · Course pipeline
+    p.append(
+        '<section class="section" aria-label="Course pipeline">'
+        '<div class="section-head"><div><div class="eyebrow">01 &middot; Course pipeline</div>'
+        '<h2 class="h2">Status distribution</h2>'
+        f'<p class="lead">The current workflow state of every video in '
+        f'{e(course["name"])}.</p></div>'
+        f'<div class="aside">{course["total_videos"]} {vw} tracked</div></div>'
+        f'{render_pipeline_cards(course)}</section>'
+    )
+    # 02 · Video detail
+    p.append(
+        '<section class="section" aria-label="Video detail">'
+        '<div class="section-head"><div><div class="eyebrow">02 &middot; Video detail</div>'
+        '<h2 class="h2">Video progress</h2>'
+        '<p class="lead">Titles, current states, pipeline completion and review '
+        'rounds.</p></div>'
+        '<div class="aside">Ordered by video title</div></div>'
+        f'{render_course_video_table(course)}</section>'
+    )
+    p.append('</div>')
+    p.append(render_footer())
+    p.append('</div></body></html>')
+    return "".join(p)
 
 
 def write_course_pages(data, gen_amman):
@@ -866,8 +1142,10 @@ def main():
           f"+ {course_page_count} course pages")
     print(f"  videos={data['total_videos']} delivered={data['delivered_total']} "
           f"in-flight={data['inflight_total']} stale={len(data['stale'])}")
-    if size_kb > 200:
-        print("WARNING: output exceeds 200KB target", file=sys.stderr)
+    # ~147KB of that is the three embedded webfonts (constant every build); the
+    # threshold leaves generous room for real page content on top of them.
+    if size_kb > 260:
+        print("WARNING: output exceeds 260KB target", file=sys.stderr)
 
 
 if __name__ == "__main__":
