@@ -3,7 +3,7 @@ function doPost(e) {
     var sheet = SpreadsheetApp.openById('157jWe_Wz0WzL3AsiMgunELwpxbGN0wpGQddmwBjnymE').getSheetByName('Videos intake');
     var data = JSON.parse(e.postData.contents);
 
-    var required = ['course_code', 'video_code', 'title', 'video_type'];
+    var required = ['course_code', 'video_code', 'title', 'video_type', 'drive_folder_link'];
     for (var i = 0; i < required.length; i++) {
       if (!data[required[i]] || String(data[required[i]]).trim() === '') {
         return ContentService.createTextOutput(JSON.stringify({ok: false, error: 'الحقل ده فاضي: ' + required[i]}))
@@ -19,14 +19,31 @@ function doPost(e) {
       course_code: String(data.course_code).trim(),
       video_code: String(data.video_code).trim(),
       title: String(data.title).trim(),
-      video_type: String(data.video_type).trim().toLowerCase()
+      video_type: String(data.video_type).trim().toLowerCase(),
+      drive_folder_link: String(data.drive_folder_link).trim()
     };
+    var courseIdx = -1;
     headers.forEach(function(h, idx) {
       var key = String(h).trim().toLowerCase().replace(/\s+/g, '_');
       if (values.hasOwnProperty(key)) row[idx] = values[key];
+      if (key === 'course_code') courseIdx = idx;
     });
 
-    sheet.appendRow(row);
+    // Write deterministically to the row right after the last real data row.
+    // We do NOT use sheet.appendRow(): if the grid has any stray/phantom
+    // content far down (common on a sheet an automation writes to), appendRow
+    // lands on that phantom last row (e.g. row 1000) instead of the true next
+    // row. Anchor on the course_code column, which every real row always has.
+    var targetRow = 2; // first data row, below the header
+    if (courseIdx >= 0) {
+      var colVals = sheet.getRange(1, courseIdx + 1, sheet.getMaxRows(), 1).getValues();
+      for (var r = colVals.length - 1; r >= 1; r--) { // r=0 is the header
+        if (String(colVals[r][0]).trim() !== '') { targetRow = r + 2; break; }
+      }
+    } else {
+      targetRow = sheet.getLastRow() + 1; // fallback if header ever renamed
+    }
+    sheet.getRange(targetRow, 1, 1, row.length).setValues([row]);
     return ContentService.createTextOutput(JSON.stringify({ok: true}))
       .setMimeType(ContentService.MimeType.JSON);
   } catch (err) {

@@ -76,6 +76,11 @@ select.control{appearance:none;-webkit-appearance:none;background-image:url("dat
       </select>
     </div>
     <div class="field">
+      <label class="label" for="drive_folder_link">رابط فولدر الفيديو</label>
+      <input class="control" id="drive_folder_link" name="drive_folder_link" type="url" required placeholder="https://drive.google.com/drive/folders/..." autocomplete="off" spellcheck="false" dir="ltr" inputmode="url">
+      <div class="hint">رابط فولدر الـ Drive الخاص بالفيديو — إجباري</div>
+    </div>
+    <div class="field">
       <label class="label" for="submitter">اسمك <span class="opt">(اختياري)</span></label>
       <input class="control" id="submitter" name="submitter" type="text" placeholder="اسمك" autocomplete="name">
     </div>
@@ -87,7 +92,7 @@ select.control{appearance:none;-webkit-appearance:none;background-image:url("dat
 </div>
 <script>
 // ⚠️ لازم تتملا بعد ما أحمد يعمل Deploy لـ Apps Script — حط رابط Web App URL هنا.
-const INTAKE_ENDPOINT = "PASTE_DEPLOYED_URL_HERE"; // <-- FILL IN after Ahmed deploys the Apps Script Web App
+const INTAKE_ENDPOINT = "https://script.google.com/macros/s/AKfycbzjlaeH2bGPILzV1aXLKThLi59-gyAfPNEvJIKuVQD4G7dg3JDRau_C6i2fl81WAuTPew/exec"; // <-- FILL IN after Ahmed deploys the Apps Script Web App
 
 const form = document.getElementById('intakeForm');
 const btn = document.getElementById('submitBtn');
@@ -104,11 +109,12 @@ form.addEventListener('submit', async function(ev){
     video_code:  document.getElementById('video_code').value.trim(),
     title:       document.getElementById('title').value.trim(),
     video_type:  document.getElementById('video_type').value.trim().toLowerCase(),
+    drive_folder_link: document.getElementById('drive_folder_link').value.trim(),
     submitter:   document.getElementById('submitter').value.trim()
   };
 
-  if(!payload.course_code || !payload.video_code || !payload.title || !payload.video_type){
-    showMsg('err', 'الرجاء ملء كل الحقول المطلوبة (الكورس، كود الفيديو، العنوان، النوع).');
+  if(!payload.course_code || !payload.video_code || !payload.title || !payload.video_type || !payload.drive_folder_link){
+    showMsg('err', 'الرجاء ملء كل الحقول المطلوبة (الكورس، كود الفيديو، العنوان، النوع، رابط الفولدر).');
     return;
   }
   if(INTAKE_ENDPOINT === "PASTE_DEPLOYED_URL_HERE"){
