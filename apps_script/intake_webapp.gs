@@ -1,5 +1,18 @@
 function doPost(e) {
   try {
+    // --- Defense in depth: only allow the htu.edu.jo Workspace domain. ---
+    // The PRIMARY gate is the deployment setting "Who has access =
+    // Anyone within htu.edu.jo". This code check is a backstop so the form
+    // still refuses strangers if that setting is ever reverted to "Anyone".
+    // With "Execute as: Me", getActiveUser().getEmail() returns the caller's
+    // address for authenticated same-domain users, and "" for anonymous
+    // access -- so an accidental "Anyone" deployment fails this check closed.
+    var email = Session.getActiveUser().getEmail();
+    if (!email || !email.toLowerCase().endsWith('@htu.edu.jo')) {
+      return ContentService.createTextOutput(JSON.stringify({ok: false, error: 'unauthorized'}))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
     var sheet = SpreadsheetApp.openById('157jWe_Wz0WzL3AsiMgunELwpxbGN0wpGQddmwBjnymE').getSheetByName('Videos intake');
     var data = JSON.parse(e.postData.contents);
 
