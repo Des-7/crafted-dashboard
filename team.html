@@ -362,10 +362,13 @@ const FACULTIES = [
     {slug:'sbee', name:'School of Built Environment Engineering'},
     {slug:'ssbs', name:'School of Social and Basic Sciences'}
   ];
-const COURSE_FACULTY = {
-    networksecurity: 'sci',
-    securecoding: 'sci'
-  };
+// Course->faculty is NO LONGER hardcoded: it is built at runtime from the
+// Courses registry tab returned by the server (out.faculties / out.courses).
+// COURSE_FACULTY is keyed by LOWER-cased course_code for case-insensitive
+// lookup; REGISTRY_COURSES keeps the original casing for display. Any course
+// not found here falls back to '__unassigned__' so nothing silently vanishes.
+let COURSE_FACULTY = {};
+let REGISTRY_COURSES = [];
 const FS_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4Z"/></svg>`;
 const DL_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>`;
 const CHEV = `<svg class="fac-chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg>`;
@@ -415,6 +418,7 @@ document.getElementById('lockForm').addEventListener('submit', async function(ev
     const out = await res.json();
     if(out && out.ok){
       VIDEOS = Array.isArray(out.videos) ? out.videos : [];
+      buildRegistry(out);
       pwInput.value = '';
       lockView.classList.add('team-hidden');
       mainView.classList.remove('team-hidden');
@@ -479,6 +483,15 @@ function renderAggregate(){
 }
 
 // ---- Full listing, grouped under the four faculties (collapsible) ----
+// Build the runtime course->faculty map + registry course list from the server
+// response (Courses registry tab). Replaces the former hardcoded map.
+function buildRegistry(out){
+  REGISTRY_COURSES = Array.isArray(out.courses) ? out.courses.slice() : [];
+  COURSE_FACULTY = {};
+  const fac = out.faculties || {};
+  Object.keys(fac).forEach(function(code){ if(fac[code]) COURSE_FACULTY[String(code).toLowerCase()] = fac[code]; });
+  if(!REGISTRY_COURSES.length) REGISTRY_COURSES = Object.keys(fac);
+}
 function facultyOf(courseCode){
   return COURSE_FACULTY[String(courseCode||'').toLowerCase()] || '__unassigned__';
 }
@@ -517,14 +530,24 @@ function renderFullListing(){
   const host = document.getElementById('fullListing');
   const byCourse = {};
   VIDEOS.forEach(function(v){ (byCourse[v.course_code] = byCourse[v.course_code] || []).push(v); });
-  const facCourses = {};
-  Object.keys(byCourse).forEach(function(c){ const f = facultyOf(c); (facCourses[f] = facCourses[f] || []).push(c); });
+  // Per-faculty course list = union of (courses that have videos) and (registry
+  // courses), so a brand-new zero-video course still shows as an empty course
+  // under its faculty (the "always show the full shape" principle).
+  const facCourses = {}, facSeen = {};
+  function place(code){
+    const f = facultyOf(code);
+    facCourses[f] = facCourses[f] || []; facSeen[f] = facSeen[f] || {};
+    const lc = String(code).toLowerCase();
+    if(!facSeen[f][lc]){ facSeen[f][lc] = true; facCourses[f].push(code); }
+  }
+  Object.keys(byCourse).forEach(place);
+  REGISTRY_COURSES.forEach(place);
   const groups = FACULTIES.slice();
   if(facCourses['__unassigned__']) groups.push({slug:'__unassigned__', name:'Unassigned'});
   let html = '';
   groups.forEach(function(f){
     const courses = (facCourses[f.slug]||[]).sort();
-    const nVids = courses.reduce(function(a,c){ return a + byCourse[c].length; }, 0);
+    const nVids = courses.reduce(function(a,c){ return a + (byCourse[c] ? byCourse[c].length : 0); }, 0);
     const open = courses.length ? ' open' : '';
     const slugChip = f.slug === '__unassigned__' ? '' : '<span class="fac-slug">'+esc(f.slug)+'</span>';
     html += '<details class="fac-group"'+open+'><summary>'+CHEV
@@ -534,7 +557,11 @@ function renderFullListing(){
     if(!courses.length){
       html += '<div class="fac-empty">No courses registered under this faculty yet.</div>';
     } else {
-      courses.forEach(function(c){ html += courseDetails(c, byCourse[c].length, courseTable(byCourse[c])); });
+      courses.forEach(function(c){
+        const list = byCourse[c] || [];
+        const inner = list.length ? courseTable(list) : '<div class="fac-empty">No videos in this course yet.</div>';
+        html += courseDetails(c, list.length, inner);
+      });
     }
     html += '</div></details>';
   });

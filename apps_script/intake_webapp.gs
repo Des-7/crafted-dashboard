@@ -1,33 +1,75 @@
 var SHEET_ID = '157jWe_Wz0WzL3AsiMgunELwpxbGN0wpGQddmwBjnymE';
 var SHEET_NAME = 'Videos intake';
+// Registry tab: the authoritative list of courses (incl. brand-new ones with
+// zero videos yet). Header row: course_code | faculty_slug | display_name.
+var REGISTRY_SHEET = 'Courses';
 
-// Read-only endpoint: returns the CURRENT distinct course_code values from the
-// live sheet as {ok:true, courses:[...]}. intake.html fetches this (GET) on
-// page load to populate the course dropdown, so a brand-new course_code in the
-// sheet appears automatically with no code change.
+// Read the Courses registry tab -> {codes:[course_code...], faculty:{code:slug}}.
+// Missing tab / empty tab returns empties (callers fall back gracefully). Order
+// and original casing of course_code are preserved.
+function readRegistry(ss) {
+  var out = {codes: [], faculty: {}};
+  var reg = ss.getSheetByName(REGISTRY_SHEET);
+  if (!reg || reg.getLastRow() < 2) return out;
+  var head = reg.getRange(1, 1, 1, reg.getLastColumn()).getValues()[0].map(function (h) {
+    return String(h).trim().toLowerCase().replace(/\s+/g, '_');
+  });
+  var ccIdx = head.indexOf('course_code');
+  var fsIdx = head.indexOf('faculty_slug');
+  if (ccIdx < 0) return out;
+  var rows = reg.getRange(2, 1, reg.getLastRow() - 1, reg.getLastColumn()).getValues();
+  for (var i = 0; i < rows.length; i++) {
+    var code = String(rows[i][ccIdx]).trim();
+    if (!code) continue;
+    out.codes.push(code);
+    if (fsIdx >= 0) {
+      var slug = String(rows[i][fsIdx]).trim();
+      if (slug) out.faculty[code] = slug;
+    }
+  }
+  return out;
+}
+
+// Read-only endpoint returning {ok:true, courses:[...], faculties:{code:slug}}.
+// intake.html fetches this (GET) on page load to populate the course dropdown.
+// The course list is the UNION of (a) the Courses registry tab -- so a brand-new
+// course with ZERO data rows still appears -- and (b) distinct course_code
+// values from existing "Videos intake" rows, kept as a safety net so anything
+// already in use never disappears if the registry lags. faculties feeds
+// team.html's course->faculty grouping from the same registry.
 function doGet(e) {
   try {
-    var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(SHEET_NAME);
+    var ss = SpreadsheetApp.openById(SHEET_ID);
+    var sheet = ss.getSheetByName(SHEET_NAME);
+    var seen = {};
+    var courses = [];
+
+    // (b) existing intake rows (safety net)
     var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
     var courseCol = -1;
     for (var i = 0; i < headers.length; i++) {
       if (String(headers[i]).trim().toLowerCase().replace(/\s+/g, '_') === 'course_code') { courseCol = i; break; }
     }
-    var courses = [];
     var lastRow = sheet.getLastRow();
     if (courseCol >= 0 && lastRow > 1) {
       var vals = sheet.getRange(2, courseCol + 1, lastRow - 1, 1).getValues();
-      var seen = {};
       for (var r = 0; r < vals.length; r++) {
         var c = String(vals[r][0]).trim();
         if (c && !seen[c]) { seen[c] = true; courses.push(c); }
       }
-      courses.sort();
     }
-    return ContentService.createTextOutput(JSON.stringify({ok: true, courses: courses}))
+
+    // (a) registry tab (authoritative; includes zero-row courses)
+    var reg = readRegistry(ss);
+    for (var k = 0; k < reg.codes.length; k++) {
+      if (!seen[reg.codes[k]]) { seen[reg.codes[k]] = true; courses.push(reg.codes[k]); }
+    }
+
+    courses.sort();
+    return ContentService.createTextOutput(JSON.stringify({ok: true, courses: courses, faculties: reg.faculty}))
       .setMimeType(ContentService.MimeType.JSON);
   } catch (err) {
-    return ContentService.createTextOutput(JSON.stringify({ok: false, error: String(err), courses: []}))
+    return ContentService.createTextOutput(JSON.stringify({ok: false, error: String(err), courses: [], faculties: {}}))
       .setMimeType(ContentService.MimeType.JSON);
   }
 }
@@ -52,9 +94,11 @@ function handleTeamData(data) {
   if (!expected || String(data.password) !== expected) {
     return jsonOut({ok: false, error: 'auth_failed'});
   }
-  var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(SHEET_NAME);
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var reg = readRegistry(ss);
+  var sheet = ss.getSheetByName(SHEET_NAME);
   var lastRow = sheet.getLastRow();
-  if (lastRow < 2) return jsonOut({ok: true, videos: []});
+  if (lastRow < 2) return jsonOut({ok: true, videos: [], faculties: reg.faculty, courses: reg.codes});
   var grid = sheet.getRange(1, 1, lastRow, sheet.getLastColumn()).getValues();
   var headers = grid[0].map(function (h) {
     return String(h).trim().toLowerCase().replace(/\s+/g, '_');
@@ -90,7 +134,7 @@ function handleTeamData(data) {
       review_round: cell(row, col.review_round)
     });
   }
-  return jsonOut({ok: true, videos: videos});
+  return jsonOut({ok: true, videos: videos, faculties: reg.faculty, courses: reg.codes});
 }
 
 function doPost(e) {
