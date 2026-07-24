@@ -62,7 +62,7 @@ select.control{appearance:none;-webkit-appearance:none;background-image:url("dat
     <div class="field">
       <label class="label" for="video_code">Video Code</label>
       <input class="control" id="video_code" name="video_code" type="text" required placeholder="topic-name-1" autocomplete="off" spellcheck="false">
-      <div class="hint">kebab-case, no spaces (e.g. topic-name-1) — must be unique within the course.</div>
+      <div class="hint">no spaces — dashes or underscores are fine (e.g. topic-name-1 or topic_name_1) — must be unique within the course.</div>
     </div>
     <div class="field">
       <label class="label" for="title">Title</label>
@@ -105,7 +105,7 @@ const INTAKE_ENDPOINT = "https://script.google.com/macros/s/AKfycbzjlaeH2bGPILzV
 // array — no other change is needed anywhere. (Real Workspace-domain locking
 // is deferred until the admin issue is resolved.)
 // ---------------------------------------------------------------------------
-const SUBMITTERS = ["Ahmed", "Team Member 2", "Team Member 3"];
+const SUBMITTERS = ["Des", "Mai", "Layan", "Nada", "Tahani", "Sana'"];
 
 const form = document.getElementById('intakeForm');
 const btn = document.getElementById('submitBtn');

@@ -783,6 +783,7 @@ a{color:var(--gold);text-decoration:none}a:hover{color:var(--gold-light)}
 .back{display:inline-flex;align-items:center;gap:7px;cursor:pointer;font-size:13px;color:var(--t-muted);margin-bottom:16px;transition:color .15s}
 .back:hover{color:var(--gold)}.back span{font-size:15px}
 .course-code{font-family:var(--fm);font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--gold);margin-bottom:10px}
+.course-fac{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin:2px 0 16px;font-family:var(--fb);font-size:14.5px;color:var(--t-soft)}
 .hero.course h1{font-size:40px}
 .vtable{overflow:hidden}
 .vt-grid{display:grid;grid-template-columns:2.2fr .9fr 1fr 1.5fr .9fr .7fr .8fr;gap:16px;align-items:center}
@@ -1057,6 +1058,8 @@ def render_course_page(course, gen_amman):
         '<a class="back" href="../../"><span aria-hidden="true">&larr;</span> All courses</a>'
         f'<div class="course-code">{e(course["code"])}</div>'
         f'<h1 class="h1">{e(course["name"])}</h1>'
+        f'<div class="course-fac">{e(course["faculty_name"])}'
+        f'<span class="fac-code">{e(course["faculty_slug"])}</span></div>'
         '<p class="lead">A detailed view of every video in this course &mdash; its '
         'current workflow state and delivery progress.</p>'
         f'{kpis}</div>'

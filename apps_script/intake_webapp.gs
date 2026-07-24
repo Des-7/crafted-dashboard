@@ -34,19 +34,15 @@ function doGet(e) {
 
 function doPost(e) {
   try {
-    // --- Defense in depth: only allow the htu.edu.jo Workspace domain. ---
-    // The PRIMARY gate is the deployment setting "Who has access =
-    // Anyone within htu.edu.jo". This code check is a backstop so the form
-    // still refuses strangers if that setting is ever reverted to "Anyone".
-    // With "Execute as: Me", getActiveUser().getEmail() returns the caller's
-    // address for authenticated same-domain users, and "" for anonymous
-    // access -- so an accidental "Anyone" deployment fails this check closed.
-    var email = Session.getActiveUser().getEmail();
-    if (!email || !email.toLowerCase().endsWith('@htu.edu.jo')) {
-      return ContentService.createTextOutput(JSON.stringify({ok: false, error: 'unauthorized'}))
-        .setMimeType(ContentService.MimeType.JSON);
-    }
-
+    // NOTE: domain-locking is intentionally DISABLED for now.
+    // A previous version checked Session.getActiveUser().getEmail() ended in
+    // '@htu.edu.jo'. Under the current design the form POSTs from a static
+    // GitHub Pages page with a credential-less fetch, so the caller is always
+    // anonymous and getEmail() returns "" -- the check rejected EVERY real
+    // submission. Real Workspace-domain locking is DEFERRED pending an HTU
+    // IT/admin fix (the "Anyone within htu.edu.jo" deployment option needs the
+    // script owned by an @htu.edu.jo Workspace account). Re-enable here and at
+    // the deployment level together once that is resolved.
     var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(SHEET_NAME);
     var data = JSON.parse(e.postData.contents);
 
