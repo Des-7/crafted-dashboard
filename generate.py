@@ -2,7 +2,7 @@
 """Generate the CraftED production dashboard as self-contained HTML pages.
 
 Reads the CraftED ops SQLite DB STRICTLY READ-ONLY (sqlite `mode=ro` URI) and
-writes ``dashboard.html``, ``index.html``, and per-course pages next to this
+writes ``dashboard.html`` and per-course pages next to this
 script. No external assets, no CDNs — the pages load on any device/network. This
 script NEVER writes to the DB or anywhere under the ops directory; it only reads.
 
@@ -26,12 +26,11 @@ from datetime import datetime, timedelta, timezone
 DB_PATH = os.environ.get("CRAFTED_OPS_DB", "/Volumes/Des/crafted-ops/crafted.db")
 
 # Where generated pages are written (inside this project directory). The root
-# overview is emitted twice: dashboard.html (the named deliverable) and
-# index.html (so the bare GitHub Pages URL serves it). Course pages live below
-# courses/<slug>/index.html.
+# overview is written to dashboard.html (the Viewer page). index.html is NOT
+# generated -- it is the static access gate (Viewer / Team chooser) and must
+# survive regeneration. Course pages live below courses/<slug>/index.html.
 _HERE = os.path.dirname(os.path.abspath(__file__))
 OUT_PATH = os.path.join(_HERE, "dashboard.html")
-INDEX_PATH = os.path.join(_HERE, "index.html")
 COURSES_DIR = os.path.join(_HERE, "courses")
 COURSES_MANIFEST = os.path.join(COURSES_DIR, ".generated-pages")
 
@@ -1063,14 +1062,14 @@ def render_course_page(course, gen_amman):
                       course["inflight_total"], course["attention_count"])
     p = [_doc_head(f'{course["name"]} · CraftED Production Control',
                    f'Production progress for {course["name"]}')]
-    p.append(render_header(ts, brand_href="../../", intake_href="../../intake.html"))
+    p.append(render_header(ts, brand_href="../../dashboard.html", intake_href="../../intake.html"))
     p.append('<div class="view">')
     # Hero
     p.append(
         '<section class="card hero course" aria-label="Course overview">'
         '<div class="hero-glow" aria-hidden="true"></div>'
         '<div class="hero-copy">'
-        '<a class="back" href="../../"><span aria-hidden="true">&larr;</span> All courses</a>'
+        '<a class="back" href="../../dashboard.html"><span aria-hidden="true">&larr;</span> All courses</a>'
         f'<div class="course-code">{e(course["code"])}</div>'
         f'<h1 class="h1">{e(course["name"])}</h1>'
         f'<div class="course-fac">{e(course["faculty_name"])}'
@@ -1166,12 +1165,14 @@ def main():
     finally:
         conn.close()
     page = render(data, gen_amman)
-    for path in (OUT_PATH, INDEX_PATH):
-        with open(path, "w", encoding="utf-8") as fh:
-            fh.write(page)
+    # Only dashboard.html is generated. index.html is the static access GATE
+    # (Viewer / Team chooser) and is intentionally NOT written here, so
+    # regeneration never clobbers it. Viewer links to dashboard.html.
+    with open(OUT_PATH, "w", encoding="utf-8") as fh:
+        fh.write(page)
     course_page_count = write_course_pages(data, gen_amman)
     size_kb = len(page.encode("utf-8")) / 1024
-    print(f"wrote dashboard.html + index.html ({size_kb:.1f} KB each) "
+    print(f"wrote dashboard.html ({size_kb:.1f} KB) "
           f"+ {course_page_count} course pages")
     print(f"  videos={data['total_videos']} delivered={data['delivered_total']} "
           f"in-flight={data['inflight_total']} stale={len(data['stale'])}")

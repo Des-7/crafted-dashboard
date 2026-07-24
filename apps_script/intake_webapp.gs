@@ -32,8 +32,77 @@ function doGet(e) {
   }
 }
 
+function jsonOut(obj) {
+  return ContentService.createTextOutput(JSON.stringify(obj))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+// Trimmed string value of a cell by column index (safe on short/undefined rows).
+function cell(row, i) {
+  return (i >= 0 && i < row.length) ? String(row[i]).trim() : '';
+}
+
+// Password-gated Team dataset. The password is compared SERVER-SIDE against the
+// TEAM_PASSWORD Script Property; it is never shipped to the browser. On any
+// mismatch we return {ok:false,error:'auth_failed'} and NO video data, so a
+// wrong password leaks nothing (verifiable in the network tab). On success we
+// return the full per-video dataset the Team page needs, read from the sheet.
+function handleTeamData(data) {
+  var expected = PropertiesService.getScriptProperties().getProperty('TEAM_PASSWORD');
+  if (!expected || String(data.password) !== expected) {
+    return jsonOut({ok: false, error: 'auth_failed'});
+  }
+  var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(SHEET_NAME);
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return jsonOut({ok: true, videos: []});
+  var grid = sheet.getRange(1, 1, lastRow, sheet.getLastColumn()).getValues();
+  var headers = grid[0].map(function (h) {
+    return String(h).trim().toLowerCase().replace(/\s+/g, '_');
+  });
+  var col = {
+    course_code: headers.indexOf('course_code'),
+    video_code: headers.indexOf('video_code'),
+    title: headers.indexOf('title'),
+    video_type: headers.indexOf('video_type'),
+    status: headers.indexOf('status'),
+    submitter: headers.indexOf('submitter'),
+    filestage_link: headers.indexOf('filestage_link'),
+    deliverable_link: headers.indexOf('deliverable_link'),
+    // No true review-round count lives in the sheet (that is a DB-only
+    // state_transitions count); filestage_version is the closest per-video
+    // proxy, used as "Round N" when present.
+    review_round: headers.indexOf('filestage_version')
+  };
+  var videos = [];
+  for (var r = 1; r < grid.length; r++) {
+    var row = grid[r];
+    var code = cell(row, col.course_code);
+    if (!code) continue; // skip blank / phantom rows
+    videos.push({
+      course_code: code,
+      video_code: cell(row, col.video_code),
+      title: cell(row, col.title),
+      video_type: cell(row, col.video_type),
+      status: cell(row, col.status).toLowerCase(),
+      submitter: cell(row, col.submitter),
+      filestage_link: cell(row, col.filestage_link),
+      deliverable_link: cell(row, col.deliverable_link),
+      review_round: cell(row, col.review_round)
+    });
+  }
+  return jsonOut({ok: true, videos: videos});
+}
+
 function doPost(e) {
   try {
+    var data = JSON.parse(e.postData.contents);
+
+    // Team dashboard data request (password-gated). Kept in the SAME project as
+    // intake so there is a single deployment / URL.
+    if (data && data.action === 'team_data') {
+      return handleTeamData(data);
+    }
+
     // NOTE: domain-locking is intentionally DISABLED for now.
     // A previous version checked Session.getActiveUser().getEmail() ended in
     // '@htu.edu.jo'. Under the current design the form POSTs from a static
@@ -44,7 +113,6 @@ function doPost(e) {
     // script owned by an @htu.edu.jo Workspace account). Re-enable here and at
     // the deployment level together once that is resolved.
     var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(SHEET_NAME);
-    var data = JSON.parse(e.postData.contents);
 
     var required = ['course_code', 'video_code', 'title', 'video_type', 'drive_folder_link', 'submitter'];
     for (var i = 0; i < required.length; i++) {
