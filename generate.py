@@ -409,10 +409,10 @@ def render_pipeline_cards(d):
     cards = []
     for status, n in present:
         pct = n / total * 100
-        label = status.replace("_", " ")
+        label = status_label(status)
         cards.append(
             f'<div class="card pcard {_tone(status)}">'
-            f'<div class="pcard-head"><span class="dot"></span>{e(label)}</div>'
+            f'<div class="pcard-head pcard-head-cap"><span class="dot"></span>{e(label)}</div>'
             f'<div class="pcard-row"><div class="pcard-n">{n}</div>'
             f'<div class="pcard-pct">{pct:.0f}%</div></div>'
             f'<div class="bar6"><div class="bar6-fill" style="width:{pct:.2f}%"></div></div>'
@@ -723,6 +723,10 @@ a{color:var(--gold);text-decoration:none}a:hover{color:var(--gold-light)}
 .two{display:grid;grid-template-columns:1fr 1fr;gap:16px}
 .pcard{padding:22px 24px}
 .pcard-head{display:flex;align-items:center;gap:9px;font-family:var(--fm);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--t-muted)}
+/* Status-distribution card headers only: Title-Case (matches the per-video
+   .pill), so they read "Delivered"/"Awaiting Review". Does NOT alter the base
+   .pcard-head ALL-CAPS eyebrow styling used by any other element. */
+.pcard-head-cap{text-transform:capitalize;letter-spacing:.04em}
 .dot{width:8px;height:8px;border-radius:99px;background:var(--c,var(--neutral))}
 .pcard-row{display:flex;justify-content:space-between;align-items:flex-end;margin:16px 0 14px}
 .pcard-n{font-family:var(--fd);font-weight:600;font-size:46px;line-height:.9;color:var(--t-bright)}
