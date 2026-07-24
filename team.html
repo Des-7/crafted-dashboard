@@ -236,34 +236,60 @@ a{color:var(--gold);text-decoration:none}a:hover{color:var(--gold-light)}
 .lock-btn:hover{filter:brightness(1.05)}.lock-btn:disabled{opacity:.6;cursor:progress}
 .lock-err{margin-top:15px;font-size:13.5px;color:var(--red);min-height:18px}
 .lock-back{display:inline-block;margin-top:18px;font-family:var(--fm);font-size:12px;color:var(--t-faint)}
-.team-controls{display:flex;flex-wrap:wrap;gap:14px;align-items:end;justify-content:space-between;margin:6px 0 30px}
-.namepick label{display:block;font-size:12px;color:var(--t-muted);margin-bottom:6px;font-family:var(--fm);letter-spacing:.04em}
-.namepick select{font-family:var(--fb);font-size:14px;color:var(--t-body);background:var(--inset);border:1px solid var(--line);border-radius:10px;padding:9px 34px 9px 13px;appearance:none;-webkit-appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23e2b64e' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 13px center;min-width:200px}
-.namepick select:focus{outline:none;border-color:var(--gold);box-shadow:0 0 0 3px var(--gold-soft)}
-.note-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px}
-.note-card{background:var(--card);border:1px solid var(--line);border-left:3px solid var(--c,var(--neutral));border-radius:12px;padding:15px 16px}
-.note-card .note-cat{font-family:var(--fm);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--c,var(--neutral));margin-bottom:9px}
-.note-item{display:flex;justify-content:space-between;gap:10px;align-items:baseline;padding:5px 0;border-top:1px solid var(--hair-soft)}
-.note-item:first-of-type{border-top:none}
-.note-item .ni-title{font-size:13.5px;color:var(--t-body)}
-.ni-round{display:inline-block;margin-left:8px;font-family:var(--fm);font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--yellow);background:var(--yellow-soft);padding:2px 7px;border-radius:99px;vertical-align:middle}
-.note-item .ni-code{font-family:var(--fm);font-size:10.5px;color:var(--t-faint);word-break:break-all}
-.note-empty,.tl-empty{color:var(--t-muted);font-size:14px;padding:18px 2px}
-.tl-course{margin-top:26px}
-.tl-course-h{display:flex;align-items:baseline;gap:10px;margin-bottom:12px}
-.tl-course-h .tl-cn{font-family:var(--fd);font-weight:700;font-size:18px;color:var(--t-head)}
+/* topbar action buttons (Notifications) reuse .cta-new sizing but outlined */
+.cta-ghost{display:inline-flex;align-items:center;gap:7px;font-family:var(--fm);font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;font-weight:600;color:var(--gold);background:var(--gold-soft);border:1px solid var(--gold);border-radius:99px;padding:8px 15px;text-decoration:none;white-space:nowrap;cursor:pointer;transition:filter .15s,background .15s}
+.cta-ghost:hover{background:rgba(226,182,78,.18);color:var(--gold-light)}
+.cta-ghost svg{width:14px;height:14px;flex:none}
+.topactions{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.back-btn{display:inline-flex;align-items:center;gap:7px;font-family:var(--fm);font-size:12px;color:var(--t-soft);background:none;border:none;cursor:pointer;padding:0}
+.back-btn:hover{color:var(--gold)}
+/* Full listing, faculty grouped */
+.fac-group{border:1px solid var(--line);border-radius:14px;background:var(--card);margin-bottom:14px;overflow:hidden}
+.fac-group>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:12px;padding:16px 18px}
+.fac-group>summary::-webkit-details-marker{display:none}
+.fac-chev{transition:transform .18s;color:var(--gold);flex:none}
+.fac-group[open] .fac-chev{transform:rotate(90deg)}
+.fac-name{font-family:var(--fd);font-weight:700;font-size:16px;color:var(--t-head)}
+.fac-slug{font-family:var(--fm);font-size:10.5px;letter-spacing:.06em;color:var(--gold);background:var(--gold-soft);padding:3px 8px;border-radius:6px}
+.fac-count{margin-left:auto;font-family:var(--fm);font-size:11px;color:var(--t-faint)}
+.fac-body{padding:2px 18px 14px}
+.tl-course{margin-top:16px}
+.tl-course:first-child{margin-top:6px}
+.tl-course-h{display:flex;align-items:baseline;gap:10px;margin-bottom:8px}
+.tl-course-h .tl-cn{font-family:var(--fd);font-weight:600;font-size:15px;color:var(--t-strong)}
 .tl-course-h .tl-ct{font-family:var(--fm);font-size:11px;color:var(--t-faint)}
 .tl-grid{display:grid;grid-template-columns:2.4fr 1fr 1.1fr auto;gap:12px;align-items:center}
 .tl-head{font-family:var(--fm);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--t-faint);padding:0 0 4px}
-.tl-row{padding:13px 0;border-top:1px solid var(--hair)}
-.tl-row .tl-title{font-size:14.5px;color:var(--t-body)}
-.tl-row .tl-code{font-family:var(--fm);font-size:11px;color:var(--t-faint);word-break:break-all}
+.tl-row{padding:11px 0;border-top:1px solid var(--hair)}
+.tl-row .tl-title{font-size:14px;color:var(--t-body)}
+.tl-row .tl-code{font-family:var(--fm);font-size:10.5px;color:var(--t-faint);word-break:break-all}
 .tl-type{font-size:13px;color:var(--t-muted);text-transform:capitalize}
 .tl-links{display:flex;gap:8px;justify-content:flex-end}
+.fac-empty{color:var(--t-faint);font-size:13px;padding:4px 0 8px}
 .lnk{width:30px;height:30px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;background:var(--inset);border:1px solid var(--line);color:var(--gold);transition:border-color .15s,background .15s}
 .lnk:hover{border-color:var(--gold);background:var(--gold-soft);color:var(--gold-light)}
 .lnk svg{width:15px;height:15px}
 .lnk-none{color:var(--t-faintest);font-family:var(--fm);font-size:13px}
+/* Notifications view */
+.namepick{margin:2px 0 26px}
+.namepick label{display:block;font-size:12px;color:var(--t-muted);margin-bottom:6px;font-family:var(--fm);letter-spacing:.04em}
+.namepick select{font-family:var(--fb);font-size:15px;color:var(--t-body);background:var(--inset);border:1px solid var(--line);border-radius:11px;padding:11px 38px 11px 14px;appearance:none;-webkit-appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23e2b64e' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 14px center;min-width:240px}
+.namepick select:focus{outline:none;border-color:var(--gold);box-shadow:0 0 0 3px var(--gold-soft)}
+.nsec{margin-top:24px}
+.nsec-h{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+.nsec-h .nsec-t{font-family:var(--fd);font-weight:700;font-size:19px;color:var(--t-head)}
+.nsec-h .nsec-c{font-family:var(--fm);font-size:11px;color:var(--t-faint);background:var(--inset);border:1px solid var(--line);padding:2px 9px;border-radius:99px}
+.nsec-h.act .nsec-t{color:var(--t-head)}
+.note-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
+.note-card{background:var(--card);border:1px solid var(--line);border-left:3px solid var(--c,var(--neutral));border-radius:12px;padding:14px 16px}
+.note-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px}
+.note-title{font-size:14.5px;color:var(--t-body);font-weight:500}
+.ni-round{font-family:var(--fm);font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--yellow);background:var(--yellow-soft);padding:2px 7px;border-radius:99px}
+.note-sub{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-family:var(--fm);font-size:10.5px;color:var(--t-faint)}
+.note-sub .n-course{color:var(--t-dim)}
+.note-who{font-family:var(--fm);font-size:9.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--t-soft);background:var(--inset);border:1px solid var(--line);padding:2px 7px;border-radius:99px}
+.note-links{display:flex;gap:7px;margin-left:auto}
+.note-empty{color:var(--t-muted);font-size:14px;padding:14px 2px}
 @media(max-width:640px){.tl-grid{grid-template-columns:1fr auto}.tl-type,.tl-head.h-type{display:none}}
 </style></head><body>
 
@@ -279,26 +305,40 @@ a{color:var(--gold);text-decoration:none}a:hover{color:var(--gold-light)}
   <a class="lock-back" href="index.html">← Back</a>
 </div></div></div>
 
-<div id="teamView" class="team-hidden"><div class="wrap">
+<div id="mainView" class="team-hidden"><div class="wrap">
   <div class="topbar"><div class="brand" aria-label="CraftED"><svg class="brand-logo" xmlns="http://www.w3.org/2000/svg" viewBox="155.41 292.85 461.32 428.01" aria-hidden="true"><rect fill="#e2b64e" x="161.41" y="298.85" width="449.32" height="416.01" rx="74.26" ry="74.26"/><path fill="#103c40" d="M405.43,644.82l-.51-3.57c14.38-2.04,28.23-6.42,41.18-13l1.64,3.22c-13.3,6.76-27.54,11.25-42.31,13.36ZM365.47,644.51c-13.97-2.22-27.5-6.63-40.21-13.12-.63-.32-1.25-.64-1.86-.97l1.69-3.19c.6.32,1.21.63,1.82.95,12.37,6.32,25.54,10.62,39.13,12.78l-.57,3.56ZM480.29,608.26l-2.51-2.6c10.37-10.03,18.99-21.69,25.62-34.67l3.26,1.55-.05.1c-6.8,13.32-15.66,25.3-26.31,35.61ZM291.23,606.68c-10.53-10.53-19.2-22.68-25.76-36.12l3.24-1.58c6.39,13.08,14.82,24.91,25.07,35.16l-2.55,2.55ZM519.36,534.68l-3.56-.63c1.31-7.44,1.97-15.04,1.97-22.61,0-6.86-.55-13.78-1.62-20.57l3.57-.57c1.11,6.98,1.67,14.09,1.67,21.14,0,7.77-.68,15.59-2.03,23.23ZM253.43,532.45c-1.12-7.01-1.68-14.15-1.68-21.22,0-7.74.68-15.53,2.01-23.15l3.56.62c-1.3,7.41-1.96,14.99-1.96,22.52,0,6.89.55,13.84,1.64,20.65l-3.57.57ZM504.46,453.77c-6.38-13.08-14.8-24.92-25.05-35.17l2.55-2.55c10.53,10.54,19.19,22.7,25.74,36.14l-3.25,1.58ZM269.66,451.82l-3.21-1.65.07-.13c6.83-13.37,15.7-25.37,26.39-35.69l2.51,2.6c-10.4,10.04-19.04,21.73-25.68,34.72l-.08.16ZM448.13,395.49c-.63-.33-1.26-.66-1.89-.98-12.35-6.31-25.49-10.6-39.05-12.76l.57-3.57c13.94,2.22,27.44,6.63,40.12,13.11.65.33,1.3.67,1.94,1.01l-1.69,3.19ZM327.1,394.39l-1.63-3.22c13.31-6.75,27.55-11.24,42.32-13.33l.51,3.57c-14.38,2.04-28.24,6.4-41.19,12.97Z"/><path fill="#103c40" d="M371.69,644.35c-.02-8.31,6.71-15.05,15.02-15.06h0c8.31-.02,15.05,6.71,15.06,15.02h0c.02,8.31-6.71,15.06-15.02,15.07h-.02c-8.3,0-15.03-6.73-15.04-15.03ZM299.72,631.23c-6.73-4.88-8.22-14.29-3.34-21.01h0c4.88-6.73,14.28-8.22,21.01-3.34h0c6.72,4.88,8.22,14.28,3.34,21.01h0c-2.94,4.06-7.53,6.21-12.19,6.21h0c-3.06,0-6.15-.93-8.82-2.87ZM452.69,627.73c-4.9-6.71-3.42-16.12,3.29-21.02h0c6.71-4.9,16.13-3.42,21.02,3.29h0c4.9,6.72,3.42,16.13-3.29,21.02h0c-2.68,1.96-5.78,2.89-8.85,2.89h0c-4.65,0-9.23-2.14-12.17-6.18ZM245.82,557.32c-2.58-7.89,1.73-16.39,9.63-18.97h0c7.9-2.58,16.4,1.74,18.98,9.63h0c2.57,7.9-1.74,16.4-9.64,18.98h0c-1.55.5-3.12.74-4.67.74h0c-6.33,0-12.23-4.03-14.3-10.38ZM508.48,566.67c-7.91-2.56-12.24-11.04-9.68-18.95h0c2.56-7.9,11.05-12.24,18.95-9.67h0c7.9,2.56,12.24,11.04,9.68,18.95h0c-2.06,6.36-7.97,10.41-14.31,10.41h0c-1.54,0-3.1-.24-4.64-.74ZM255.36,484.79c-7.91-2.55-12.25-11.03-9.7-18.94h0c2.55-7.9,11.03-12.24,18.94-9.69h0c7.9,2.55,12.25,11.03,9.7,18.93h0c-2.06,6.38-7.96,10.43-14.32,10.43h0c-1.53,0-3.09-.23-4.62-.73ZM498.76,474.83c-2.57-7.9,1.75-16.39,9.66-18.96h0c7.9-2.57,16.39,1.75,18.95,9.66h0c2.57,7.9-1.75,16.38-9.65,18.95h0c-1.55.51-3.11.75-4.65.75h0c-6.34,0-12.24-4.04-14.31-10.4ZM296.02,412.79c-4.9-6.71-3.44-16.12,3.27-21.03h0c6.71-4.9,16.12-3.44,21.02,3.27h0c4.91,6.71,3.45,16.12-3.26,21.02h0c-2.68,1.96-5.79,2.91-8.87,2.91h0c-4.64-.01-9.21-2.14-12.16-6.17ZM455.87,415.89h0c-6.72-4.89-8.21-14.3-3.32-21.02h0c4.89-6.72,14.3-8.2,21.02-3.32h0c6.72,4.89,8.2,14.3,3.31,21.02h0c-2.94,4.05-7.52,6.2-12.17,6.2h0c-3.07,0-6.17-.94-8.84-2.88ZM371.21,378.39c-.02-8.31,6.7-15.06,15-15.08h.36c8.31,0,15.05,6.73,15.05,15.04h0c0,8.31-6.74,15.04-15.05,15.04h-.06c-.07.01-.15.01-.22.01h-.04c-8.29,0-15.03-6.72-15.04-15.01Z"/><path fill="#103c40" d="M358.89,572.85c-.79.08-2.35.09-3.13,0-7.62-.9-10.5-8.52-10.69-15.26.18-35.37-.39-70.78.29-106.12,2.48-13.82,11.98-14.34,22.83-8.55,29.97,15.97,58.61,34.63,88.48,50.8,10.35,5.95,12.16,16.16,1.93,23.54-30.46,16.65-59.79,35.68-90.42,52-2.75,1.47-6.17,3.27-9.3,3.61v-.02h.01Z"/></svg><span class="wordmark">Craft<span>ED</span></span></div>
-    <div class="topmeta"><a class="cta-new" href="intake.html" aria-label="Register a new video"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Register New Video</a><span class="metaline">Team view</span></div>
+    <div class="topactions">
+      <a class="cta-new" href="intake.html" aria-label="Register a new video"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Register New Video</a>
+      <button class="cta-ghost" id="toNotif" type="button" aria-label="Open notifications"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>Notifications</button>
+    </div>
+  </div>
+  <div class="view">
+    <div id="aggregate"></div>
+    <section class="section" aria-label="All videos">
+      <div class="section-head"><div><div class="eyebrow">02 &middot; Full listing</div>
+        <h2 class="h2">Every course &amp; video</h2>
+        <p class="lead">All faculties, courses and videos with current status and available links — always complete, the same for everyone.</p></div>
+      </div>
+      <div id="fullListing"></div>
+    </section>
+  </div>
+  <div class="footer"><div class="foot-l">CraftED operations · team access</div>
+    <div class="foot-r"><a href="index.html">Switch access</a></div></div>
+</div></div>
+
+<div id="notifView" class="team-hidden"><div class="wrap">
+  <div class="topbar"><div class="brand" aria-label="CraftED"><svg class="brand-logo" xmlns="http://www.w3.org/2000/svg" viewBox="155.41 292.85 461.32 428.01" aria-hidden="true"><rect fill="#e2b64e" x="161.41" y="298.85" width="449.32" height="416.01" rx="74.26" ry="74.26"/><path fill="#103c40" d="M405.43,644.82l-.51-3.57c14.38-2.04,28.23-6.42,41.18-13l1.64,3.22c-13.3,6.76-27.54,11.25-42.31,13.36ZM365.47,644.51c-13.97-2.22-27.5-6.63-40.21-13.12-.63-.32-1.25-.64-1.86-.97l1.69-3.19c.6.32,1.21.63,1.82.95,12.37,6.32,25.54,10.62,39.13,12.78l-.57,3.56ZM480.29,608.26l-2.51-2.6c10.37-10.03,18.99-21.69,25.62-34.67l3.26,1.55-.05.1c-6.8,13.32-15.66,25.3-26.31,35.61ZM291.23,606.68c-10.53-10.53-19.2-22.68-25.76-36.12l3.24-1.58c6.39,13.08,14.82,24.91,25.07,35.16l-2.55,2.55ZM519.36,534.68l-3.56-.63c1.31-7.44,1.97-15.04,1.97-22.61,0-6.86-.55-13.78-1.62-20.57l3.57-.57c1.11,6.98,1.67,14.09,1.67,21.14,0,7.77-.68,15.59-2.03,23.23ZM253.43,532.45c-1.12-7.01-1.68-14.15-1.68-21.22,0-7.74.68-15.53,2.01-23.15l3.56.62c-1.3,7.41-1.96,14.99-1.96,22.52,0,6.89.55,13.84,1.64,20.65l-3.57.57ZM504.46,453.77c-6.38-13.08-14.8-24.92-25.05-35.17l2.55-2.55c10.53,10.54,19.19,22.7,25.74,36.14l-3.25,1.58ZM269.66,451.82l-3.21-1.65.07-.13c6.83-13.37,15.7-25.37,26.39-35.69l2.51,2.6c-10.4,10.04-19.04,21.73-25.68,34.72l-.08.16ZM448.13,395.49c-.63-.33-1.26-.66-1.89-.98-12.35-6.31-25.49-10.6-39.05-12.76l.57-3.57c13.94,2.22,27.44,6.63,40.12,13.11.65.33,1.3.67,1.94,1.01l-1.69,3.19ZM327.1,394.39l-1.63-3.22c13.31-6.75,27.55-11.24,42.32-13.33l.51,3.57c-14.38,2.04-28.24,6.4-41.19,12.97Z"/><path fill="#103c40" d="M371.69,644.35c-.02-8.31,6.71-15.05,15.02-15.06h0c8.31-.02,15.05,6.71,15.06,15.02h0c.02,8.31-6.71,15.06-15.02,15.07h-.02c-8.3,0-15.03-6.73-15.04-15.03ZM299.72,631.23c-6.73-4.88-8.22-14.29-3.34-21.01h0c4.88-6.73,14.28-8.22,21.01-3.34h0c6.72,4.88,8.22,14.28,3.34,21.01h0c-2.94,4.06-7.53,6.21-12.19,6.21h0c-3.06,0-6.15-.93-8.82-2.87ZM452.69,627.73c-4.9-6.71-3.42-16.12,3.29-21.02h0c6.71-4.9,16.13-3.42,21.02,3.29h0c4.9,6.72,3.42,16.13-3.29,21.02h0c-2.68,1.96-5.78,2.89-8.85,2.89h0c-4.65,0-9.23-2.14-12.17-6.18ZM245.82,557.32c-2.58-7.89,1.73-16.39,9.63-18.97h0c7.9-2.58,16.4,1.74,18.98,9.63h0c2.57,7.9-1.74,16.4-9.64,18.98h0c-1.55.5-3.12.74-4.67.74h0c-6.33,0-12.23-4.03-14.3-10.38ZM508.48,566.67c-7.91-2.56-12.24-11.04-9.68-18.95h0c2.56-7.9,11.05-12.24,18.95-9.67h0c7.9,2.56,12.24,11.04,9.68,18.95h0c-2.06,6.36-7.97,10.41-14.31,10.41h0c-1.54,0-3.1-.24-4.64-.74ZM255.36,484.79c-7.91-2.55-12.25-11.03-9.7-18.94h0c2.55-7.9,11.03-12.24,18.94-9.69h0c7.9,2.55,12.25,11.03,9.7,18.93h0c-2.06,6.38-7.96,10.43-14.32,10.43h0c-1.53,0-3.09-.23-4.62-.73ZM498.76,474.83c-2.57-7.9,1.75-16.39,9.66-18.96h0c7.9-2.57,16.39,1.75,18.95,9.66h0c2.57,7.9-1.75,16.38-9.65,18.95h0c-1.55.51-3.11.75-4.65.75h0c-6.34,0-12.24-4.04-14.31-10.4ZM296.02,412.79c-4.9-6.71-3.44-16.12,3.27-21.03h0c6.71-4.9,16.12-3.44,21.02,3.27h0c4.91,6.71,3.45,16.12-3.26,21.02h0c-2.68,1.96-5.79,2.91-8.87,2.91h0c-4.64-.01-9.21-2.14-12.16-6.17ZM455.87,415.89h0c-6.72-4.89-8.21-14.3-3.32-21.02h0c4.89-6.72,14.3-8.2,21.02-3.32h0c6.72,4.89,8.2,14.3,3.31,21.02h0c-2.94,4.05-7.52,6.2-12.17,6.2h0c-3.07,0-6.17-.94-8.84-2.88ZM371.21,378.39c-.02-8.31,6.7-15.06,15-15.08h.36c8.31,0,15.05,6.73,15.05,15.04h0c0,8.31-6.74,15.04-15.05,15.04h-.06c-.07.01-.15.01-.22.01h-.04c-8.29,0-15.03-6.72-15.04-15.01Z"/><path fill="#103c40" d="M358.89,572.85c-.79.08-2.35.09-3.13,0-7.62-.9-10.5-8.52-10.69-15.26.18-35.37-.39-70.78.29-106.12,2.48-13.82,11.98-14.34,22.83-8.55,29.97,15.97,58.61,34.63,88.48,50.8,10.35,5.95,12.16,16.16,1.93,23.54-30.46,16.65-59.79,35.68-90.42,52-2.75,1.47-6.17,3.27-9.3,3.61v-.02h.01Z"/></svg><span class="wordmark">Craft<span>ED</span></span></div>
+    <div class="topactions"><button class="back-btn" id="backToMain" type="button"><span aria-hidden="true">&larr;</span> Back to dashboard</button></div>
   </div>
   <div class="view">
     <section class="section" aria-label="Notifications">
-      <div class="section-head"><div><div class="eyebrow">Your notifications</div>
+      <div class="section-head"><div><div class="eyebrow">Notifications</div>
         <h2 class="h2">What needs you</h2>
-        <p class="lead">Pick your name to see the status of videos you submitted. This section is the only thing the name filters — everything below stays complete.</p></div>
-        <div class="namepick"><label for="namePick">Filter by submitter</label>
-          <select id="namePick"><option value="" selected>— Your name —</option></select></div>
+        <p class="lead">Pick a name to see that person's videos, or "All" for everyone. Split into what needs action and what's done.</p></div>
       </div>
+      <div class="namepick"><label for="namePick">Show notifications for</label>
+        <select id="namePick"></select></div>
       <div id="notifications"></div>
-    </section>
-    <section class="section" aria-label="All videos">
-      <div class="section-head"><div><div class="eyebrow">Full listing</div>
-        <h2 class="h2">Every course &amp; video</h2>
-        <p class="lead">All courses and videos with current status and available links — unfiltered, the same for everyone on the team.</p></div>
-      </div>
-      <div id="fullListing"></div>
     </section>
   </div>
   <div class="footer"><div class="foot-l">CraftED operations · team access</div>
@@ -308,39 +348,51 @@ a{color:var(--gold);text-decoration:none}a:hover{color:var(--gold-light)}
 <script>
 const INTAKE_ENDPOINT = "https://script.google.com/macros/s/AKfycbzjlaeH2bGPILzV1aXLKThLi59-gyAfPNEvJIKuVQD4G7dg3JDRau_C6i2fl81WAuTPew/exec";
 const SUBMITTERS = ["Des", "Mai", "Layan", "Nada", "Tahani", "Sana'"];
-const FS_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3h7v7"/><path d="M10 14 21 3"/><path d="M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5"/></svg>`;
+const FACULTIES = [
+    {slug:'sci',  name:'School of Computing and Informatics'},
+    {slug:'set',  name:'School of Engineering Technology'},
+    {slug:'sbee', name:'School of Built Environment Engineering'},
+    {slug:'ssbs', name:'School of Social and Basic Sciences'}
+  ];
+const COURSE_FACULTY = {
+    networksecurity: 'sci',
+    securecoding: 'sci'
+  };
+const FS_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4Z"/></svg>`;
 const DL_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>`;
+const CHEV = `<svg class="fac-chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg>`;
 
-// status -> pill tone class (mirrors generate.py STATUS_CLASS)
 const TONE = {submitted:'s-neutral',validated:'s-blue',parsing:'s-blue',awaiting_review:'s-yellow',approved:'s-teal',rendering:'s-blue',rendered:'s-cyan',delivered:'s-green',failed:'s-red',on_hold:'s-amber'};
-
-// status -> notification category (only actionable/informational states)
-function notifyOf(v){
-  const s = v.status;
-  if(s === 'awaiting_review') return {key:'review', tone:'s-yellow', label:'Needs Review' + (v.review_round ? ' — Round ' + v.review_round : '')};
-  if(s === 'on_hold')   return {key:'hold',     tone:'s-amber', label:'On Hold'};
-  if(s === 'failed')    return {key:'failed',   tone:'s-red',   label:'Failed'};
-  if(s === 'rendered')  return {key:'ready',    tone:'s-cyan',  label:'Ready'};
-  if(s === 'delivered') return {key:'delivered',tone:'s-green', label:'Delivered'};
-  return null; // in-progress states produce no notification
-}
-const NOTE_ORDER = ['review','hold','failed','ready','delivered'];
-const NOTE_TITLE = {review:'Needs Review', hold:'On Hold', failed:'Failed', ready:'Ready', delivered:'Delivered'};
+const STATUS_ORDER = ['submitted','validated','parsing','awaiting_review','approved','rendering','rendered','delivered','failed','on_hold'];
+// Need Action vs Done buckets (in-progress states appear in neither).
+const NEED_ACTION = ['awaiting_review','on_hold','failed'];
+const DONE = ['rendered','delivered'];
 
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const titleCase = (s) => String(s||'').replace(/_/g,' ');
 
 let VIDEOS = [];
 
 const lockView = document.getElementById('lockView');
-const teamView = document.getElementById('teamView');
+const mainView = document.getElementById('mainView');
+const notifView = document.getElementById('notifView');
 const pwInput  = document.getElementById('pw');
 const unlockBtn= document.getElementById('unlockBtn');
 const lockErr  = document.getElementById('lockErr');
 const namePick = document.getElementById('namePick');
 
-// Populate the name picker (static SUBMITTERS list, same as intake).
-SUBMITTERS.forEach(function(n){ const o=document.createElement('option'); o.value=n; o.textContent=n; namePick.appendChild(o); });
+// name picker: "All" first, then the submitter names.
+(function(){
+  const all = document.createElement('option'); all.value='__all__'; all.textContent='All (everyone)'; namePick.appendChild(all);
+  SUBMITTERS.forEach(function(n){ const o=document.createElement('option'); o.value=n; o.textContent=n; namePick.appendChild(o); });
+  namePick.value = '__all__';
+})();
 namePick.addEventListener('change', function(){ renderNotifications(namePick.value); });
+
+document.getElementById('toNotif').addEventListener('click', showNotif);
+document.getElementById('backToMain').addEventListener('click', showMain);
+function showNotif(){ mainView.classList.add('team-hidden'); notifView.classList.remove('team-hidden'); window.scrollTo(0,0); renderNotifications(namePick.value); }
+function showMain(){ notifView.classList.add('team-hidden'); mainView.classList.remove('team-hidden'); window.scrollTo(0,0); }
 
 document.getElementById('lockForm').addEventListener('submit', async function(ev){
   ev.preventDefault();
@@ -357,9 +409,9 @@ document.getElementById('lockForm').addEventListener('submit', async function(ev
       VIDEOS = Array.isArray(out.videos) ? out.videos : [];
       pwInput.value = '';
       lockView.classList.add('team-hidden');
-      teamView.classList.remove('team-hidden');
+      mainView.classList.remove('team-hidden');
+      renderAggregate();
       renderFullListing();
-      renderNotifications(namePick.value);
     } else {
       lockErr.textContent = 'Wrong password. Try again.';
     }
@@ -378,59 +430,125 @@ function linksCell(v){
   return out;
 }
 
+// ---- Aggregate progress cards (same shape/CSS as the Viewer dashboard) ----
+function renderAggregate(){
+  const host = document.getElementById('aggregate');
+  const total = VIDEOS.length;
+  const counts = {};
+  VIDEOS.forEach(function(v){ counts[v.status] = (counts[v.status]||0)+1; });
+  const delivered = counts['delivered']||0;
+  const attention = (counts['failed']||0) + (counts['on_hold']||0);
+  const inprogress = total - delivered - attention;
+  const pct = total ? (delivered/total*100) : 0;
+  let hero = '<section class="card hero" aria-label="Production overview"><div class="hero-glow" aria-hidden="true"></div>'
+    + '<div class="hero-copy"><div class="eyebrow">Overview</div><h1 class="h1">Team command center</h1>'
+    + '<p class="lead">Every tracked video, live from the intake sheet.</p>'
+    + '<div class="kpis">'
+    + '<div class="kpi"><div class="kpi-v c-bright">'+total+'</div><div class="kpi-l">Total videos</div></div>'
+    + '<div class="kpi"><div class="kpi-v c-green">'+delivered+'</div><div class="kpi-l">Delivered</div></div>'
+    + '<div class="kpi"><div class="kpi-v c-gold">'+inprogress+'</div><div class="kpi-l">In progress</div></div>'
+    + '<div class="kpi"><div class="kpi-v '+(attention?'c-red':'c-faint')+'">'+attention+'</div><div class="kpi-l">Need attention</div></div>'
+    + '</div>'
+    + '<div class="progline"><div class="prog-head"><div class="prog-cap">Overall delivery progress</div>'
+    + '<div class="prog-val">'+delivered+' of '+total+' delivered</div></div>'
+    + '<div class="bar8"><div class="bar8-fill" style="width:'+pct.toFixed(2)+'%"></div></div></div>'
+    + '</div></section>';
+  // status distribution cards (reuse .pcard / pcard-head-cap Title-Case)
+  const present = STATUS_ORDER.filter(function(s){ return (counts[s]||0) > 0; });
+  let cards = '';
+  present.forEach(function(s){
+    const n = counts[s]; const p = total ? (n/total*100) : 0;
+    cards += '<div class="card pcard '+(TONE[s]||'s-neutral')+'">'
+      + '<div class="pcard-head pcard-head-cap"><span class="dot"></span>'+esc(titleCase(s))+'</div>'
+      + '<div class="pcard-row"><div class="pcard-n">'+n+'</div><div class="pcard-pct">'+p.toFixed(0)+'%</div></div>'
+      + '<div class="bar6"><div class="bar6-fill" style="width:'+p.toFixed(2)+'%"></div></div>'
+      + '<div class="pcard-foot">of '+total+' tracked videos</div></div>';
+  });
+  const dist = '<section class="section" aria-label="Pipeline"><div class="section-head"><div>'
+    + '<div class="eyebrow">01 &middot; Pipeline</div><h2 class="h2">Where the work stands</h2></div></div>'
+    + '<div class="two">'+cards+'</div></section>';
+  host.innerHTML = hero + dist;
+}
+
+// ---- Full listing, grouped under the four faculties (collapsible) ----
+function facultyOf(courseCode){
+  return COURSE_FACULTY[String(courseCode||'').toLowerCase()] || '__unassigned__';
+}
 function renderFullListing(){
   const host = document.getElementById('fullListing');
-  if(!VIDEOS.length){ host.innerHTML = '<div class="tl-empty">No videos in the sheet yet.</div>'; return; }
   const byCourse = {};
   VIDEOS.forEach(function(v){ (byCourse[v.course_code] = byCourse[v.course_code] || []).push(v); });
-  const courses = Object.keys(byCourse).sort();
+  // course_code -> faculty slug, then group courses under faculties
+  const facCourses = {};
+  Object.keys(byCourse).forEach(function(c){ const f = facultyOf(c); (facCourses[f] = facCourses[f] || []).push(c); });
+  const groups = FACULTIES.slice();
+  if(facCourses['__unassigned__']) groups.push({slug:'__unassigned__', name:'Unassigned'});
   let html = '';
-  courses.forEach(function(c){
-    const list = byCourse[c];
-    html += '<div class="tl-course"><div class="tl-course-h"><span class="tl-cn">'+esc(c)+'</span>'
-         +  '<span class="tl-ct">'+list.length+' video'+(list.length===1?'':'s')+'</span></div>'
-         +  '<div class="tl-grid"><div class="tl-head">Video</div><div class="tl-head h-type">Type</div>'
-         +  '<div class="tl-head">Status</div><div class="tl-head" style="text-align:right">Links</div></div>';
-    list.forEach(function(v){
-      const tone = TONE[v.status] || 's-neutral';
-      html += '<div class="tl-grid tl-row">'
-           +  '<div><div class="tl-title">'+esc(v.title || '(untitled)')+'</div><div class="tl-code">'+esc(v.video_code)+'</div></div>'
-           +  '<div class="tl-type">'+esc(v.video_type)+'</div>'
-           +  '<div><span class="pill '+tone+'">'+esc((v.status||'').replace(/_/g,' '))+'</span></div>'
-           +  '<div class="tl-links">'+linksCell(v)+'</div>'
-           +  '</div>';
-    });
-    html += '</div>';
+  groups.forEach(function(f){
+    const courses = (facCourses[f.slug]||[]).sort();
+    const nVids = courses.reduce(function(a,c){ return a + byCourse[c].length; }, 0);
+    const open = courses.length ? ' open' : '';
+    const slugChip = f.slug === '__unassigned__' ? '' : '<span class="fac-slug">'+esc(f.slug)+'</span>';
+    html += '<details class="fac-group"'+open+'><summary>'+CHEV
+      + '<span class="fac-name">'+esc(f.name)+'</span>'+slugChip
+      + '<span class="fac-count">'+(courses.length? nVids+' video'+(nVids===1?'':'s')+' · '+courses.length+' course'+(courses.length===1?'':'s') : 'no courses yet')+'</span>'
+      + '</summary><div class="fac-body">';
+    if(!courses.length){
+      html += '<div class="fac-empty">No courses registered under this faculty yet.</div>';
+    } else {
+      courses.forEach(function(c){
+        const list = byCourse[c];
+        html += '<div class="tl-course"><div class="tl-course-h"><span class="tl-cn">'+esc(c)+'</span>'
+          + '<span class="tl-ct">'+list.length+' video'+(list.length===1?'':'s')+'</span></div>'
+          + '<div class="tl-grid"><div class="tl-head">Video</div><div class="tl-head h-type">Type</div>'
+          + '<div class="tl-head">Status</div><div class="tl-head" style="text-align:right">Links</div></div>';
+        list.forEach(function(v){
+          html += '<div class="tl-grid tl-row">'
+            + '<div><div class="tl-title">'+esc(v.title||'(untitled)')+'</div><div class="tl-code">'+esc(v.video_code)+'</div></div>'
+            + '<div class="tl-type">'+esc(v.video_type)+'</div>'
+            + '<div><span class="pill '+(TONE[v.status]||'s-neutral')+'">'+esc(titleCase(v.status))+'</span></div>'
+            + '<div class="tl-links">'+linksCell(v)+'</div></div>';
+        });
+        html += '</div>';
+      });
+    }
+    html += '</div></details>';
   });
   host.innerHTML = html;
 }
 
-function renderNotifications(name){
+// ---- Notifications: Need Action + Done, filtered by name or All ----
+function noteCard(v, showWho){
+  const tone = TONE[v.status] || 's-neutral';
+  const round = (v.status === 'awaiting_review' && v.review_round) ? '<span class="ni-round">Round '+esc(v.review_round)+'</span>' : '';
+  const who = showWho ? '<span class="note-who">'+esc(v.submitter||'—')+'</span>' : '';
+  const links = (v.filestage_link || v.deliverable_link) ? '<span class="note-links">'+linksCell(v)+'</span>' : '';
+  return '<div class="note-card '+tone+'" style="--c:var(--'+tone.replace('s-','')+')">'
+    + '<div class="note-top"><span class="pill '+tone+'">'+esc(titleCase(v.status))+'</span>'+round+who+links+'</div>'
+    + '<div class="note-title">'+esc(v.title||'(untitled)')+'</div>'
+    + '<div class="note-sub"><span class="n-course">'+esc(v.course_code)+'</span><span>'+esc(v.video_code)+'</span></div>'
+    + '</div>';
+}
+function renderNotifications(pick){
   const host = document.getElementById('notifications');
-  if(!name){ host.innerHTML = '<div class="note-empty">Pick your name above to see notifications for videos you submitted.</div>'; return; }
-  const target = name.trim().toLowerCase();
-  const mine = VIDEOS.filter(function(v){ return (v.submitter||'').trim().toLowerCase() === target; });
-  const buckets = {};
-  mine.forEach(function(v){ const n = notifyOf(v); if(!n) return; (buckets[n.key] = buckets[n.key] || {tone:n.tone, items:[]}).items.push({v:v, label:n.label}); });
-  const active = NOTE_ORDER.filter(function(k){ return buckets[k] && buckets[k].items.length; });
-  if(!active.length){
-    host.innerHTML = '<div class="note-empty">No notifications for <b>'+esc(name)+'</b>'+(mine.length? '' : ' — no videos submitted under this name yet')+'.</div>';
-    return;
+  const isAll = (pick === '__all__');
+  const target = isAll ? null : String(pick||'').trim().toLowerCase();
+  const mine = isAll ? VIDEOS.slice() : VIDEOS.filter(function(v){ return (v.submitter||'').trim().toLowerCase() === target; });
+  const need = mine.filter(function(v){ return NEED_ACTION.indexOf(v.status) >= 0; });
+  const done = mine.filter(function(v){ return DONE.indexOf(v.status) >= 0; });
+  // Need Action ordered by urgency; Done newest-ish by array order.
+  need.sort(function(a,b){ return NEED_ACTION.indexOf(a.status) - NEED_ACTION.indexOf(b.status); });
+  const who = esc(isAll ? 'everyone' : pick);
+  function section(title, items, emptyMsg, showWho){
+    let inner;
+    if(items.length){ inner = '<div class="note-list">'+items.map(function(v){return noteCard(v, showWho);}).join('')+'</div>'; }
+    else { inner = '<div class="note-empty">'+emptyMsg+'</div>'; }
+    return '<div class="nsec"><div class="nsec-h"><span class="nsec-t">'+title+'</span>'
+      + '<span class="nsec-c">'+items.length+'</span></div>'+inner+'</div>';
   }
-  let html = '<div class="note-grid">';
-  active.forEach(function(k){
-    const b = buckets[k];
-    html += '<div class="note-card" style="--c:var(--'+b.tone.replace('s-','')+')">'
-         +  '<div class="note-cat">'+esc(NOTE_TITLE[k])+' · '+b.items.length+'</div>';
-    b.items.forEach(function(it){
-      const round = (k === 'review' && it.v.review_round) ? '<span class="ni-round">Round '+esc(it.v.review_round)+'</span>' : '';
-      html += '<div class="note-item"><span class="ni-title">'+esc(it.v.title||'(untitled)')+round
-           +  '</span><span class="ni-code">'+esc(it.v.video_code)+'</span></div>';
-    });
-    html += '</div>';
-  });
-  html += '</div>';
-  host.innerHTML = html;
+  host.innerHTML =
+      section('Need Action', need, 'Nothing needs action for <b>'+who+'</b> right now.', isAll)
+    + section('Done', done, 'No completed videos for <b>'+who+'</b> yet.', isAll);
 }
 </script>
 </body></html>
