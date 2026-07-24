@@ -271,6 +271,10 @@ a{color:var(--gold);text-decoration:none}a:hover{color:var(--gold-light)}
 .tl-type{font-size:13px;color:var(--t-muted);text-transform:capitalize}
 .tl-links{display:flex;gap:8px;justify-content:flex-end}
 .fac-empty{color:var(--t-faint);font-size:13px;padding:4px 0 8px}
+/* honest data-problem surface: a course whose faculty_slug matches none of the four */
+.fac-problem{border-color:rgba(248,113,113,.5)}
+.fac-problem .fac-name{color:var(--red)}
+.fac-problem-note{color:#f6b9b9;font-size:12.5px;line-height:1.5;background:var(--red-soft);border:1px solid rgba(248,113,113,.3);border-radius:9px;padding:10px 12px;margin:2px 0 12px}
 .lnk{width:30px;height:30px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;background:var(--inset);border:1px solid var(--line);color:var(--gold);transition:border-color .15s,background .15s}
 .lnk:hover{border-color:var(--gold);background:var(--gold-soft);color:var(--gold-light)}
 .lnk svg{width:15px;height:15px}
@@ -365,8 +369,9 @@ const FACULTIES = [
 // Course->faculty is NO LONGER hardcoded: it is built at runtime from the
 // Courses registry tab returned by the server (out.faculties / out.courses).
 // COURSE_FACULTY is keyed by LOWER-cased course_code for case-insensitive
-// lookup; REGISTRY_COURSES keeps the original casing for display. Any course
-// not found here falls back to '__unassigned__' so nothing silently vanishes.
+// lookup; REGISTRY_COURSES keeps the original casing for display. A course that
+// resolves to no faculty (missing/unknown slug) returns '' and is surfaced
+// loudly in an "Unrecognized faculty" block — there is NO neutral catch-all.
 let COURSE_FACULTY = {};
 let REGISTRY_COURSES = [];
 const FS_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4Z"/></svg>`;
@@ -493,7 +498,7 @@ function buildRegistry(out){
   if(!REGISTRY_COURSES.length) REGISTRY_COURSES = Object.keys(fac);
 }
 function facultyOf(courseCode){
-  return COURSE_FACULTY[String(courseCode||'').toLowerCase()] || '__unassigned__';
+  return COURSE_FACULTY[String(courseCode||'').toLowerCase()] || '';
 }
 // Shared collapsible COURSE group — reused by the Full Listing AND by the
 // Need Action / Done notification sections (same pattern/styling as faculties).
@@ -501,7 +506,7 @@ function facultyOf(courseCode){
 // only the Notifications view passes it (the Full Listing is already nested
 // under its faculty section, so the label would be redundant there).
 function courseDetails(courseCode, count, innerHTML, facSlug){
-  const fac = (facSlug && facSlug !== '__unassigned__') ? '<span class="cg-fac">· '+esc(facSlug)+'</span>' : '';
+  const fac = facSlug ? '<span class="cg-fac">· '+esc(facSlug)+'</span>' : '';
   return '<details class="course-group" open><summary>'+CHEV
     + '<span class="cg-name">'+esc(courseCode)+'</span>'+fac
     + '<span class="cg-count">'+count+' video'+(count===1?'':'s')+'</span>'
@@ -535,36 +540,58 @@ function renderFullListing(){
   // under its faculty (the "always show the full shape" principle).
   const facCourses = {}, facSeen = {};
   function place(code){
-    const f = facultyOf(code);
+    const f = facultyOf(code); // real registry slug, or '' if none resolves
     facCourses[f] = facCourses[f] || []; facSeen[f] = facSeen[f] || {};
     const lc = String(code).toLowerCase();
     if(!facSeen[f][lc]){ facSeen[f][lc] = true; facCourses[f].push(code); }
   }
   Object.keys(byCourse).forEach(place);
   REGISTRY_COURSES.forEach(place);
-  const groups = FACULTIES.slice();
-  if(facCourses['__unassigned__']) groups.push({slug:'__unassigned__', name:'Unassigned'});
+
+  function courseRows(courses){
+    return courses.slice().sort().map(function(c){
+      const list = byCourse[c] || [];
+      const inner = list.length ? courseTable(list) : '<div class="fac-empty">No videos in this course yet.</div>';
+      return courseDetails(c, list.length, inner);
+    }).join('');
+  }
+  function nVid(courses){ return courses.reduce(function(a,c){ return a + (byCourse[c] ? byCourse[c].length : 0); }, 0); }
+
   let html = '';
-  groups.forEach(function(f){
-    const courses = (facCourses[f.slug]||[]).sort();
-    const nVids = courses.reduce(function(a,c){ return a + (byCourse[c] ? byCourse[c].length : 0); }, 0);
+  // The FOUR real faculties, always shown. No catch-all bucket: every course is
+  // expected to resolve to one of these via the registry.
+  FACULTIES.forEach(function(f){
+    const courses = facCourses[f.slug] || [];
     const open = courses.length ? ' open' : '';
-    const slugChip = f.slug === '__unassigned__' ? '' : '<span class="fac-slug">'+esc(f.slug)+'</span>';
     html += '<details class="fac-group"'+open+'><summary>'+CHEV
-      + '<span class="fac-name">'+esc(f.name)+'</span>'+slugChip
-      + '<span class="fac-count">'+(courses.length? nVids+' video'+(nVids===1?'':'s')+' · '+courses.length+' course'+(courses.length===1?'':'s') : 'no courses yet')+'</span>'
-      + '</summary><div class="fac-body">';
-    if(!courses.length){
-      html += '<div class="fac-empty">No courses registered under this faculty yet.</div>';
-    } else {
-      courses.forEach(function(c){
-        const list = byCourse[c] || [];
-        const inner = list.length ? courseTable(list) : '<div class="fac-empty">No videos in this course yet.</div>';
-        html += courseDetails(c, list.length, inner);
-      });
-    }
-    html += '</div></details>';
+      + '<span class="fac-name">'+esc(f.name)+'</span><span class="fac-slug">'+esc(f.slug)+'</span>'
+      + '<span class="fac-count">'+(courses.length? nVid(courses)+' video'+(nVid(courses)===1?'':'s')+' · '+courses.length+' course'+(courses.length===1?'':'s') : 'no courses yet')+'</span>'
+      + '</summary><div class="fac-body">'
+      + (courses.length ? courseRows(courses) : '<div class="fac-empty">No courses registered under this faculty yet.</div>')
+      + '</div></details>';
   });
+  // HONEST edge surface (should never fire): a course whose registry
+  // faculty_slug matches none of the four faculties, or is missing. We do NOT
+  // paper over it with a neutral 'Unassigned' bucket — it is flagged loudly as
+  // a registry data problem to fix, and the offending slug is shown inline.
+  const valid = {}; FACULTIES.forEach(function(f){ valid[f.slug] = true; });
+  const orphans = []; // [courseCode, badSlug]
+  Object.keys(facCourses).forEach(function(slug){
+    if(!valid[slug]) facCourses[slug].forEach(function(c){ orphans.push([c, slug]); });
+  });
+  if(orphans.length){
+    orphans.sort(function(a,b){ return a[0] < b[0] ? -1 : 1; });
+    const rows = orphans.map(function(pair){
+      const c = pair[0], list = byCourse[c] || [];
+      const inner = list.length ? courseTable(list) : '<div class="fac-empty">No videos in this course yet.</div>';
+      return courseDetails(c, list.length, inner, pair[1] || '(no faculty_slug)');
+    }).join('');
+    html += '<details class="fac-group fac-problem" open><summary>'+CHEV
+      + '<span class="fac-name">⚠ Unrecognized faculty</span>'
+      + '<span class="fac-count">'+orphans.length+' course'+(orphans.length===1?'':'s')+' — fix the Courses registry</span>'
+      + '</summary><div class="fac-body"><div class="fac-problem-note">These course(s) have a faculty_slug that is not one of the four registered faculties (sci, set, sbee, ssbs), or none at all. This is a Courses-registry data problem — correct the registry.</div>'
+      + rows + '</div></details>';
+  }
   host.innerHTML = html;
 }
 
