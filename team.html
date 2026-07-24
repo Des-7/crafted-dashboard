@@ -253,11 +253,15 @@ a{color:var(--gold);text-decoration:none}a:hover{color:var(--gold-light)}
 .fac-slug{font-family:var(--fm);font-size:10.5px;letter-spacing:.06em;color:var(--gold);background:var(--gold-soft);padding:3px 8px;border-radius:6px}
 .fac-count{margin-left:auto;font-family:var(--fm);font-size:11px;color:var(--t-faint)}
 .fac-body{padding:2px 18px 14px}
-.tl-course{margin-top:16px}
-.tl-course:first-child{margin-top:6px}
-.tl-course-h{display:flex;align-items:baseline;gap:10px;margin-bottom:8px}
-.tl-course-h .tl-cn{font-family:var(--fd);font-weight:600;font-size:15px;color:var(--t-strong)}
-.tl-course-h .tl-ct{font-family:var(--fm);font-size:11px;color:var(--t-faint)}
+/* nested collapsible course group (inside a faculty AND inside notif sections) */
+.course-group{border-top:1px solid var(--hair)}
+.course-group:first-child{border-top:none}
+.course-group>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:10px;padding:11px 0}
+.course-group>summary::-webkit-details-marker{display:none}
+.course-group[open]>summary .fac-chev{transform:rotate(90deg)}
+.cg-name{font-family:var(--fd);font-weight:600;font-size:15px;color:var(--t-strong)}
+.cg-count{margin-left:auto;font-family:var(--fm);font-size:11px;color:var(--t-faint)}
+.cg-body{padding:2px 0 14px 22px}
 .tl-grid{display:grid;grid-template-columns:2.4fr 1fr 1.1fr auto;gap:12px;align-items:center}
 .tl-head{font-family:var(--fm);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--t-faint);padding:0 0 4px}
 .tl-row{padding:11px 0;border-top:1px solid var(--hair)}
@@ -275,11 +279,14 @@ a{color:var(--gold);text-decoration:none}a:hover{color:var(--gold-light)}
 .namepick label{display:block;font-size:12px;color:var(--t-muted);margin-bottom:6px;font-family:var(--fm);letter-spacing:.04em}
 .namepick select{font-family:var(--fb);font-size:15px;color:var(--t-body);background:var(--inset);border:1px solid var(--line);border-radius:11px;padding:11px 38px 11px 14px;appearance:none;-webkit-appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23e2b64e' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 14px center;min-width:240px}
 .namepick select:focus{outline:none;border-color:var(--gold);box-shadow:0 0 0 3px var(--gold-soft)}
-.nsec{margin-top:24px}
-.nsec-h{display:flex;align-items:center;gap:10px;margin-bottom:14px}
-.nsec-h .nsec-t{font-family:var(--fd);font-weight:700;font-size:19px;color:var(--t-head)}
-.nsec-h .nsec-c{font-family:var(--fm);font-size:11px;color:var(--t-faint);background:var(--inset);border:1px solid var(--line);padding:2px 9px;border-radius:99px}
-.nsec-h.act .nsec-t{color:var(--t-head)}
+/* collapsible notification section (Need Action / Done), independent */
+.nsec-d{border:1px solid var(--line);border-radius:14px;background:var(--card);margin-top:16px;overflow:hidden}
+.nsec-d>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:11px;padding:16px 18px}
+.nsec-d>summary::-webkit-details-marker{display:none}
+.nsec-d[open]>summary .fac-chev{transform:rotate(90deg)}
+.nsec-t{font-family:var(--fd);font-weight:700;font-size:18px;color:var(--t-head)}
+.nsec-c{margin-left:auto;font-family:var(--fm);font-size:11px;color:var(--t-faint);background:var(--inset);border:1px solid var(--line);padding:2px 9px;border-radius:99px}
+.nsec-body{padding:2px 18px 14px}
 .note-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
 .note-card{background:var(--card);border:1px solid var(--line);border-left:3px solid var(--c,var(--neutral));border-radius:12px;padding:14px 16px}
 .note-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px}
@@ -474,11 +481,37 @@ function renderAggregate(){
 function facultyOf(courseCode){
   return COURSE_FACULTY[String(courseCode||'').toLowerCase()] || '__unassigned__';
 }
+// Shared collapsible COURSE group — reused by the Full Listing AND by the
+// Need Action / Done notification sections (same pattern/styling as faculties).
+function courseDetails(courseCode, count, innerHTML){
+  return '<details class="course-group" open><summary>'+CHEV
+    + '<span class="cg-name">'+esc(courseCode)+'</span>'
+    + '<span class="cg-count">'+count+' video'+(count===1?'':'s')+'</span>'
+    + '</summary><div class="cg-body">'+innerHTML+'</div></details>';
+}
+// Group a video list by course_code -> ordered [ [course, videos], ... ].
+function groupByCourse(videos){
+  const by = {};
+  videos.forEach(function(v){ (by[v.course_code] = by[v.course_code] || []).push(v); });
+  return Object.keys(by).sort().map(function(c){ return [c, by[c]]; });
+}
+// Full Listing table body for one course (head + rows).
+function courseTable(list){
+  let h = '<div class="tl-grid"><div class="tl-head">Video</div><div class="tl-head h-type">Type</div>'
+    + '<div class="tl-head">Status</div><div class="tl-head" style="text-align:right">Links</div></div>';
+  list.forEach(function(v){
+    h += '<div class="tl-grid tl-row">'
+      + '<div><div class="tl-title">'+esc(v.title||'(untitled)')+'</div><div class="tl-code">'+esc(v.video_code)+'</div></div>'
+      + '<div class="tl-type">'+esc(v.video_type)+'</div>'
+      + '<div><span class="pill '+(TONE[v.status]||'s-neutral')+'">'+esc(titleCase(v.status))+'</span></div>'
+      + '<div class="tl-links">'+linksCell(v)+'</div></div>';
+  });
+  return h;
+}
 function renderFullListing(){
   const host = document.getElementById('fullListing');
   const byCourse = {};
   VIDEOS.forEach(function(v){ (byCourse[v.course_code] = byCourse[v.course_code] || []).push(v); });
-  // course_code -> faculty slug, then group courses under faculties
   const facCourses = {};
   Object.keys(byCourse).forEach(function(c){ const f = facultyOf(c); (facCourses[f] = facCourses[f] || []).push(c); });
   const groups = FACULTIES.slice();
@@ -496,21 +529,7 @@ function renderFullListing(){
     if(!courses.length){
       html += '<div class="fac-empty">No courses registered under this faculty yet.</div>';
     } else {
-      courses.forEach(function(c){
-        const list = byCourse[c];
-        html += '<div class="tl-course"><div class="tl-course-h"><span class="tl-cn">'+esc(c)+'</span>'
-          + '<span class="tl-ct">'+list.length+' video'+(list.length===1?'':'s')+'</span></div>'
-          + '<div class="tl-grid"><div class="tl-head">Video</div><div class="tl-head h-type">Type</div>'
-          + '<div class="tl-head">Status</div><div class="tl-head" style="text-align:right">Links</div></div>';
-        list.forEach(function(v){
-          html += '<div class="tl-grid tl-row">'
-            + '<div><div class="tl-title">'+esc(v.title||'(untitled)')+'</div><div class="tl-code">'+esc(v.video_code)+'</div></div>'
-            + '<div class="tl-type">'+esc(v.video_type)+'</div>'
-            + '<div><span class="pill '+(TONE[v.status]||'s-neutral')+'">'+esc(titleCase(v.status))+'</span></div>'
-            + '<div class="tl-links">'+linksCell(v)+'</div></div>';
-        });
-        html += '</div>';
-      });
+      courses.forEach(function(c){ html += courseDetails(c, byCourse[c].length, courseTable(byCourse[c])); });
     }
     html += '</div></details>';
   });
@@ -536,19 +555,27 @@ function renderNotifications(pick){
   const mine = isAll ? VIDEOS.slice() : VIDEOS.filter(function(v){ return (v.submitter||'').trim().toLowerCase() === target; });
   const need = mine.filter(function(v){ return NEED_ACTION.indexOf(v.status) >= 0; });
   const done = mine.filter(function(v){ return DONE.indexOf(v.status) >= 0; });
-  // Need Action ordered by urgency; Done newest-ish by array order.
   need.sort(function(a,b){ return NEED_ACTION.indexOf(a.status) - NEED_ACTION.indexOf(b.status); });
   const who = esc(isAll ? 'everyone' : pick);
-  function section(title, items, emptyMsg, showWho){
-    let inner;
-    if(items.length){ inner = '<div class="note-list">'+items.map(function(v){return noteCard(v, showWho);}).join('')+'</div>'; }
-    else { inner = '<div class="note-empty">'+emptyMsg+'</div>'; }
-    return '<div class="nsec"><div class="nsec-h"><span class="nsec-t">'+title+'</span>'
-      + '<span class="nsec-c">'+items.length+'</span></div>'+inner+'</div>';
+  // Each section is an INDEPENDENT <details>; inside, items are sub-grouped by
+  // course using the same collapsible courseDetails() as the Full Listing.
+  function section(title, items, emptyMsg, open){
+    let body;
+    if(items.length){
+      body = groupByCourse(items).map(function(pair){
+        const cards = '<div class="note-list">'+pair[1].map(function(v){ return noteCard(v, isAll); }).join('')+'</div>';
+        return courseDetails(pair[0], pair[1].length, cards);
+      }).join('');
+    } else {
+      body = '<div class="note-empty">'+emptyMsg+'</div>';
+    }
+    return '<details class="nsec-d"'+(open?' open':'')+'><summary>'+CHEV
+      + '<span class="nsec-t">'+title+'</span><span class="nsec-c">'+items.length+'</span></summary>'
+      + '<div class="nsec-body">'+body+'</div></details>';
   }
   host.innerHTML =
-      section('Need Action', need, 'Nothing needs action for <b>'+who+'</b> right now.', isAll)
-    + section('Done', done, 'No completed videos for <b>'+who+'</b> yet.', isAll);
+      section('Need Action', need, 'Nothing needs action for <b>'+who+'</b> right now.', true)
+    + section('Done', done, 'No completed videos for <b>'+who+'</b> yet.', true);
 }
 </script>
 </body></html>
