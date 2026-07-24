@@ -116,6 +116,17 @@ def stage_progress(status):
     return PIPELINE_STAGES.index(status) / (len(PIPELINE_STAGES) - 1) * 100
 
 
+def status_label(status):
+    """Human-readable label for a raw ops status, English, no reinterpretation.
+
+    Just spaces out the underscore and Title-Cases the words, so
+    ``awaiting_review`` -> ``Awaiting Review`` and ``on_hold`` -> ``On Hold``.
+    The underlying state names are preserved verbatim (only cased), never
+    renamed or translated.
+    """
+    return str(status).replace("_", " ").title()
+
+
 # --------------------------------------------------------------------------- #
 # Data access (READ-ONLY)
 # --------------------------------------------------------------------------- #
@@ -613,7 +624,7 @@ def render_course_video_table(course):
             f'<div><div class="v-title">{e(v["title"])}</div>'
             f'<div class="v-code" title="{e(v["code"])}">{e(v["code"])}</div></div>'
             f'<div class="v-type">{e(v["vtype"])}</div>'
-            f'<div><span class="pill {tone}">{e(v["status"].replace("_", " "))}</span></div>'
+            f'<div><span class="pill {tone}">{e(status_label(v["status"]))}</span></div>'
             f'{prog}'
             f'<div class="v-tis r">{e(fmt_age(v["age_h"]))}</div>'
             f'<div class="v-sla r">{sla_txt}</div>'
