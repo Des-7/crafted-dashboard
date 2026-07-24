@@ -260,6 +260,7 @@ a{color:var(--gold);text-decoration:none}a:hover{color:var(--gold-light)}
 .course-group>summary::-webkit-details-marker{display:none}
 .course-group[open]>summary .fac-chev{transform:rotate(90deg)}
 .cg-name{font-family:var(--fd);font-weight:600;font-size:15px;color:var(--t-strong)}
+.cg-fac{font-family:var(--fm);font-size:11px;color:var(--t-dim);margin-left:8px}
 .cg-count{margin-left:auto;font-family:var(--fm);font-size:11px;color:var(--t-faint)}
 .cg-body{padding:2px 0 14px 22px}
 .tl-grid{display:grid;grid-template-columns:2.4fr 1fr 1.1fr auto;gap:12px;align-items:center}
@@ -483,9 +484,13 @@ function facultyOf(courseCode){
 }
 // Shared collapsible COURSE group — reused by the Full Listing AND by the
 // Need Action / Done notification sections (same pattern/styling as faculties).
-function courseDetails(courseCode, count, innerHTML){
+// facSlug (optional) adds a small muted faculty label next to the course name;
+// only the Notifications view passes it (the Full Listing is already nested
+// under its faculty section, so the label would be redundant there).
+function courseDetails(courseCode, count, innerHTML, facSlug){
+  const fac = (facSlug && facSlug !== '__unassigned__') ? '<span class="cg-fac">· '+esc(facSlug)+'</span>' : '';
   return '<details class="course-group" open><summary>'+CHEV
-    + '<span class="cg-name">'+esc(courseCode)+'</span>'
+    + '<span class="cg-name">'+esc(courseCode)+'</span>'+fac
     + '<span class="cg-count">'+count+' video'+(count===1?'':'s')+'</span>'
     + '</summary><div class="cg-body">'+innerHTML+'</div></details>';
 }
@@ -564,7 +569,7 @@ function renderNotifications(pick){
     if(items.length){
       body = groupByCourse(items).map(function(pair){
         const cards = '<div class="note-list">'+pair[1].map(function(v){ return noteCard(v, isAll); }).join('')+'</div>';
-        return courseDetails(pair[0], pair[1].length, cards);
+        return courseDetails(pair[0], pair[1].length, cards, facultyOf(pair[0]));
       }).join('');
     } else {
       body = '<div class="note-empty">'+emptyMsg+'</div>';
