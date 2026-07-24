@@ -668,6 +668,9 @@ a{color:var(--gold);text-decoration:none}a:hover{color:var(--gold-light)}
 .live-dot{width:7px;height:7px;border-radius:99px;background:var(--green);box-shadow:0 0 8px var(--green)}
 .live-txt{font-family:var(--fm);font-size:11px;letter-spacing:.06em;color:var(--green)}
 .metaline{font-family:var(--fm);font-size:12px;color:var(--t-faint);white-space:nowrap}.metaline b{font-weight:500;color:var(--t-soft)}
+.cta-new{display:inline-flex;align-items:center;gap:7px;font-family:var(--fm);font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;font-weight:600;color:#103c40;background:linear-gradient(180deg,var(--gold-light),var(--gold));border:1px solid var(--gold);border-radius:99px;padding:8px 15px;text-decoration:none;white-space:nowrap;transition:filter .15s}
+.cta-new:hover{filter:brightness(1.06);color:#103c40}
+.cta-new svg{width:13px;height:13px;flex:none}
 
 /* Cards / sections */
 .card{background:var(--card);border:1px solid var(--line);border-radius:16px}
@@ -897,8 +900,12 @@ LOGO_MARK = (
 )
 
 
-def render_header(ts, brand_href=None):
-    """Top bar: brand (mark + Space Grotesk wordmark), live badge, timestamp."""
+def render_header(ts, brand_href=None, intake_href="intake.html"):
+    """Top bar: brand (mark + Space Grotesk wordmark), live badge, timestamp.
+
+    ``intake_href`` points at our own intake.html (relative to the page being
+    rendered) and drives the "Register New Video" call-to-action.
+    """
     inner = (f'{LOGO_MARK}<span class="wordmark">Craft<span>ED</span></span>')
     if brand_href:
         brand = (f'<a class="brand" href="{e(brand_href)}" '
@@ -906,8 +913,16 @@ def render_header(ts, brand_href=None):
                  f'{inner}</a>')
     else:
         brand = f'<div class="brand" aria-label="CraftED">{inner}</div>'
+    cta = (
+        f'<a class="cta-new" href="{e(intake_href)}" '
+        'aria-label="Register a new video">'
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+        'stroke-width="2.6" stroke-linecap="round" aria-hidden="true">'
+        '<path d="M12 5v14M5 12h14"/></svg>Register New Video</a>'
+    )
     return (
         f'<div class="topbar">{brand}<div class="topmeta">'
+        f'{cta}'
         '<span class="live"><span class="live-dot" aria-hidden="true"></span>'
         '<span class="live-txt">Live mirror</span></span>'
         f'<span class="metaline">Updated <b>{e(ts)}</b></span>'
@@ -1032,7 +1047,7 @@ def render_course_page(course, gen_amman):
                       course["inflight_total"], course["attention_count"])
     p = [_doc_head(f'{course["name"]} · CraftED Production Control',
                    f'Production progress for {course["name"]}')]
-    p.append(render_header(ts, brand_href="../../"))
+    p.append(render_header(ts, brand_href="../../", intake_href="../../intake.html"))
     p.append('<div class="view">')
     # Hero
     p.append(

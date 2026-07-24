@@ -1,3 +1,37 @@
+var SHEET_ID = '157jWe_Wz0WzL3AsiMgunELwpxbGN0wpGQddmwBjnymE';
+var SHEET_NAME = 'Videos intake';
+
+// Read-only endpoint: returns the CURRENT distinct course_code values from the
+// live sheet as {ok:true, courses:[...]}. intake.html fetches this (GET) on
+// page load to populate the course dropdown, so a brand-new course_code in the
+// sheet appears automatically with no code change.
+function doGet(e) {
+  try {
+    var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(SHEET_NAME);
+    var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    var courseCol = -1;
+    for (var i = 0; i < headers.length; i++) {
+      if (String(headers[i]).trim().toLowerCase().replace(/\s+/g, '_') === 'course_code') { courseCol = i; break; }
+    }
+    var courses = [];
+    var lastRow = sheet.getLastRow();
+    if (courseCol >= 0 && lastRow > 1) {
+      var vals = sheet.getRange(2, courseCol + 1, lastRow - 1, 1).getValues();
+      var seen = {};
+      for (var r = 0; r < vals.length; r++) {
+        var c = String(vals[r][0]).trim();
+        if (c && !seen[c]) { seen[c] = true; courses.push(c); }
+      }
+      courses.sort();
+    }
+    return ContentService.createTextOutput(JSON.stringify({ok: true, courses: courses}))
+      .setMimeType(ContentService.MimeType.JSON);
+  } catch (err) {
+    return ContentService.createTextOutput(JSON.stringify({ok: false, error: String(err), courses: []}))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
 function doPost(e) {
   try {
     // --- Defense in depth: only allow the htu.edu.jo Workspace domain. ---
@@ -13,10 +47,10 @@ function doPost(e) {
         .setMimeType(ContentService.MimeType.JSON);
     }
 
-    var sheet = SpreadsheetApp.openById('157jWe_Wz0WzL3AsiMgunELwpxbGN0wpGQddmwBjnymE').getSheetByName('Videos intake');
+    var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(SHEET_NAME);
     var data = JSON.parse(e.postData.contents);
 
-    var required = ['course_code', 'video_code', 'title', 'video_type', 'drive_folder_link'];
+    var required = ['course_code', 'video_code', 'title', 'video_type', 'drive_folder_link', 'submitter'];
     for (var i = 0; i < required.length; i++) {
       if (!data[required[i]] || String(data[required[i]]).trim() === '') {
         return ContentService.createTextOutput(JSON.stringify({ok: false, error: 'الحقل ده فاضي: ' + required[i]}))
