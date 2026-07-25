@@ -79,6 +79,11 @@ select.control{appearance:none;-webkit-appearance:none;background-image:url("dat
         <option value="instructor_slides">Instructor + Slides</option>
       </select>
     </div>
+    <div class="field" id="instructor_name_field" hidden>
+      <label class="label" for="instructor_name">Instructor Name</label>
+      <input class="control" id="instructor_name" name="instructor_name" type="text" placeholder="Instructor full name" autocomplete="off">
+      <div class="hint">Required for instructor-led types (Instructor + iPad / Instructor + Slides).</div>
+    </div>
     <div class="field">
       <label class="label" for="drive_folder_link">Drive Folder Link</label>
       <input class="control" id="drive_folder_link" name="drive_folder_link" type="url" required placeholder="https://drive.google.com/drive/folders/..." autocomplete="off" spellcheck="false" inputmode="url">
@@ -115,8 +120,24 @@ const msg = document.getElementById('msg');
 const courseSelect = document.getElementById('course_code');
 const courseHint = document.getElementById('course_hint');
 const submitterSelect = document.getElementById('submitter');
+const videoTypeSelect = document.getElementById('video_type');
+const instructorField = document.getElementById('instructor_name_field');
+const instructorInput = document.getElementById('instructor_name');
 
 function showMsg(type, text){ msg.className = 'msg show ' + type; msg.textContent = text; }
+
+// The Instructor Name field is only relevant for instructor-led video types.
+// Show + require it ONLY for these two types; for storyboard/ipad/slides it
+// stays hidden and not required (matching the original behavior exactly).
+const INSTRUCTOR_TYPES = ['instructor_ipad', 'instructor_slides'];
+function syncInstructorField(){
+  const needed = INSTRUCTOR_TYPES.indexOf(videoTypeSelect.value) !== -1;
+  instructorField.hidden = !needed;
+  instructorInput.required = needed;
+  if(!needed) instructorInput.value = ''; // don't carry a stale name into a non-instructor submission
+}
+videoTypeSelect.addEventListener('change', syncInstructorField);
+syncInstructorField(); // set correct initial state (also after form.reset())
 
 // Populate the static submitter dropdown from SUBMITTERS.
 SUBMITTERS.forEach(function(name){
@@ -159,12 +180,19 @@ form.addEventListener('submit', async function(ev){
     video_code:  document.getElementById('video_code').value.trim(),
     title:       document.getElementById('title').value.trim(),
     video_type:  document.getElementById('video_type').value.trim().toLowerCase(),
+    instructor_name: instructorInput.value.trim(),
     drive_folder_link: document.getElementById('drive_folder_link').value.trim(),
     submitter:   submitterSelect.value.trim()
   };
 
   if(!payload.course_code || !payload.video_code || !payload.title || !payload.video_type || !payload.drive_folder_link || !payload.submitter){
     showMsg('err', 'Please fill in every field (course, video code, title, type, Drive link, submitter name).');
+    return;
+  }
+
+  // Instructor Name is required only for the instructor-led types.
+  if(INSTRUCTOR_TYPES.indexOf(payload.video_type) !== -1 && !payload.instructor_name){
+    showMsg('err', 'Please enter the Instructor Name for this video type.');
     return;
   }
 
@@ -182,6 +210,7 @@ form.addEventListener('submit', async function(ev){
     if(out && out.ok){
       showMsg('ok', 'Video registered successfully. The automation will fill in the rest.');
       form.reset();
+      syncInstructorField(); // reset() clears the type select -> re-hide the field
     } else {
       showMsg('err', 'Error: ' + ((out && out.error) ? out.error : 'unknown') + ' — your entries are still here, please try again.');
     }

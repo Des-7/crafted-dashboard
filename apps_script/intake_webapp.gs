@@ -175,6 +175,11 @@ function doPost(e) {
       video_code: String(data.video_code).trim(),
       title: String(data.title).trim(),
       video_type: String(data.video_type).trim().toLowerCase(),
+      // Only sent (and required) by the form for instructor-led types; blank
+      // otherwise. Lands in the "Instructor Name" column IF that header exists
+      // in the sheet -- add it, or this value is silently dropped like any
+      // unmatched key. It never overwrites another column.
+      instructor_name: String(data.instructor_name || '').trim(),
       drive_folder_link: String(data.drive_folder_link).trim()
     };
     var courseIdx = -1;
