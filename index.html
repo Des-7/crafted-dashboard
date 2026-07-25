@@ -248,15 +248,16 @@ a{color:var(--gold);text-decoration:none}a:hover{color:var(--gold-light)}
 .gate-card-s{font-size:13px;color:var(--t-muted);line-height:1.45}
 .gate-foot{margin-top:40px;font-family:var(--fm);font-size:11px;color:var(--t-faintest);letter-spacing:.04em}
 /* ---- One-time-per-day intro splash (gate only). Plays the re-encoded
-   assets/crafted-intro.mp4 (28KB, 560x560, muted). The overlay background is
-   #000000 -- the EXACT measured background of the source video -- so the
-   video's own black edges blend seamlessly with the overlay (no box/seam). It
-   displays at 280px so the video's logo mark (~19.85% of the 2000px frame)
-   renders at ~54px, matching the gate's static logo shown after the intro.
-   Overlay fades out over the video's static tail to reveal the gate. */
+   assets/crafted-intro.mp4 (56KB, 1120x1120, muted). The video was authored on
+   the page --canvas colour #070b12; the BROWSER renders its background at
+   #070b11 (measured by drawing the frame to a canvas -- the browser's YUV->RGB
+   differs from ffmpeg's, which reads #060a10). We set the overlay to #070b12 --
+   the page/gate colour -- which is within 1 level (blue) of the rendered video,
+   so there is no perceptible box/seam, and it matches the gate exactly on
+   fade-out. Displays at 560px (double the previous size, per request). */
 .intro{display:none}
-html.intro-on .intro{display:flex;position:fixed;inset:0;z-index:200;align-items:center;justify-content:center;background:#000000;animation:intro-out .5s ease 2.7s forwards}
-.intro-video{width:280px;max-width:82vw;height:auto;display:block}
+html.intro-on .intro{display:flex;position:fixed;inset:0;z-index:200;align-items:center;justify-content:center;background:#070b12;animation:intro-out .5s ease 2.7s forwards}
+.intro-video{width:560px;max-width:88vw;height:auto;display:block}
 @keyframes intro-out{to{opacity:0;visibility:hidden}}
 @media(prefers-reduced-motion:reduce){html.intro-on .intro{animation:intro-out .3s ease .5s forwards}}
 </style></head><body>
