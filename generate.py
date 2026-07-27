@@ -11,6 +11,7 @@ Run:  python3 generate.py
 
 import base64
 import html
+import json
 import math
 import os
 import re
@@ -31,6 +32,7 @@ DB_PATH = os.environ.get("CRAFTED_OPS_DB", "/Volumes/Des/crafted-ops/crafted.db"
 # survive regeneration. Course pages live below courses/<slug>/index.html.
 _HERE = os.path.dirname(os.path.abspath(__file__))
 OUT_PATH = os.path.join(_HERE, "dashboard.html")
+METRICS_PATH = os.path.join(_HERE, "viewer_metrics.json")
 COURSES_DIR = os.path.join(_HERE, "courses")
 COURSES_MANIFEST = os.path.join(COURSES_DIR, ".generated-pages")
 
@@ -417,8 +419,19 @@ def render_pipeline_cards(d):
     return f'<div class="two">{"".join(cards)}</div>'
 
 
+_CHEV = ('<svg class="fac-chev" width="14" height="14" viewBox="0 0 24 24" '
+         'fill="none" stroke="currentColor" stroke-width="2.6" '
+         'stroke-linecap="round" stroke-linejoin="round">'
+         '<path d="m9 6 6 6-6 6"/></svg>')
+
+
 def render_faculty(d):
-    """BY FACULTY partition: each faculty groups its clickable course rows."""
+    """BY FACULTY partition: each faculty is a collapsible group of course rows.
+
+    Collapsed on load (matches the Team page's <details> pattern). Courses inside
+    keep their segmented delivered/in-flight bar and ratio; per-video detail is
+    never exposed here (the main-page content ruling stands).
+    """
     faculties = d["faculties"]
     if not faculties:
         return ('<div class="card part"><div class="part-label">By faculty</div>'
@@ -442,12 +455,13 @@ def render_faculty(d):
             )
         cw = "course" if len(f["courses"]) == 1 else "courses"
         groups.append(
-            '<div class="fac"><div class="fac-head"><div class="fac-id">'
+            '<details class="fac"><summary class="fac-head">'
+            f'{_CHEV}<div class="fac-id">'
             f'<span class="fac-name">{e(f["name"])}</span>'
             f'<span class="fac-code">{e(f["slug"])}</span></div>'
             f'<span class="fac-sum">{len(f["courses"])} {cw} '
-            f'&middot; {f["delivered"]}/{f["total"]} delivered</span></div>'
-            f'<div class="fac-rows">{"".join(rows)}</div></div>'
+            f'&middot; {f["delivered"]}/{f["total"]} delivered</span></summary>'
+            f'<div class="fac-rows">{"".join(rows)}</div></details>'
         )
     legend = ('<div class="legend">'
               '<span class="leg"><span class="leg-dot" style="background:var(--green)"></span>delivered</span>'
@@ -741,13 +755,17 @@ a{color:var(--gold);text-decoration:none}a:hover{color:var(--gold-light)}
 .courses{display:grid;grid-template-columns:1.7fr 1fr;gap:16px;align-items:start}
 .part{padding:22px 24px}
 .part-label{font-family:var(--fm);font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--gold);margin-bottom:18px}
-.fac+.fac{margin-top:24px}
-.fac-head{display:flex;justify-content:space-between;align-items:baseline;gap:14px;margin-bottom:16px}
+.fac{border-top:1px solid var(--hair)}
+.fac:first-of-type{border-top:none}
+.fac-head{display:flex;align-items:center;gap:12px;padding:16px 0;cursor:pointer;list-style:none}
+.fac-head::-webkit-details-marker{display:none}
+.fac-chev{transition:transform .18s;color:var(--gold);flex:none}
+.fac[open] .fac-chev{transform:rotate(90deg)}
 .fac-id{display:flex;align-items:center;gap:10px;min-width:0}
 .fac-name{font-family:var(--fd);font-weight:600;font-size:15px;color:var(--t-head)}
 .fac-code{font-family:var(--fm);font-size:10.5px;letter-spacing:.06em;color:var(--gold);background:var(--gold-soft);padding:3px 8px;border-radius:6px;white-space:nowrap}
-.fac-sum{font-family:var(--fm);font-size:11.5px;color:var(--t-faint);white-space:nowrap}
-.fac-rows{display:flex;flex-direction:column;gap:14px}
+.fac-sum{font-family:var(--fm);font-size:11.5px;color:var(--t-faint);white-space:nowrap;margin-left:auto}
+.fac-rows{display:flex;flex-direction:column;gap:14px;padding:2px 0 18px}
 .crow{display:grid;grid-template-columns:180px 1fr auto;gap:18px;align-items:center;cursor:pointer;padding:5px 8px;margin:-5px -8px;border-radius:9px;transition:background .15s;color:inherit;text-decoration:none}
 .crow:hover{background:rgba(255,255,255,.045)}
 .crow-name{display:flex;align-items:center;gap:6px;min-width:0}
@@ -1157,6 +1175,45 @@ def resolve_now_utc():
     return datetime.now(timezone.utc)
 
 
+def write_metrics_json(data, gen_amman):
+    """Emit viewer_metrics.json — the DB-derived figures the Team page can't
+    compute from the intake sheet (no timestamps / SLA config live there).
+
+    Straight dump of already-computed collect() values; schema 1. The Team page
+    fetches this same-origin and renders SPEED / QUALITY LOOP / OUTPUT, the
+    12-month trend and SLA watch from it, so those figures match the Viewer
+    exactly. generated_at_amman lets the Team page stamp an honest "as of" time
+    (these refresh only on a manual publish, not live).
+    """
+    metrics = {
+        "schema": 1,
+        "generated_at_amman": gen_amman.strftime("%Y-%m-%d %H:%M"),
+        "speed": {
+            "cycle_avg_h": data["cycle_avg_h"],
+            "cycle_qualifying": data["cycle_qualifying"],
+            "cycle_delivered_total": data["cycle_delivered_total"],
+        },
+        "quality_loop": {
+            "review_avg": data["review_avg"],
+            "review_max": data["review_max"],
+            "review_video_count": data["review_video_count"],
+        },
+        "output": {
+            "delivered_total": data["delivered_total"],
+            "total_videos": data["total_videos"],
+            "inflight_total": data["inflight_total"],
+        },
+        "deliveries_per_month": data["deliveries_per_month"],
+        "sla_watch": [
+            {"code": c["code"], "name": c["name"], "slug": c["slug"],
+             "attention_count": c["attention_count"]}
+            for c in data["course_details"] if c["attention_count"] > 0
+        ],
+    }
+    with open(METRICS_PATH, "w", encoding="utf-8") as fh:
+        json.dump(metrics, fh, ensure_ascii=False, indent=2)
+
+
 def main():
     now_utc = resolve_now_utc()
     gen_amman = now_utc.astimezone(AMMAN)
@@ -1171,6 +1228,11 @@ def main():
     # regeneration never clobbers it. Viewer links to dashboard.html.
     with open(OUT_PATH, "w", encoding="utf-8") as fh:
         fh.write(page)
+    # Machine-readable mirror of the DB-only production figures (SPEED, the
+    # 12-month delivery trend, SLA watch) so the sheet-driven Team page can fetch
+    # and render them same-origin — it has no access to the ops DB. A pure dump
+    # of values already computed in collect(); no new computation here.
+    write_metrics_json(data, gen_amman)
     course_page_count = write_course_pages(data, gen_amman)
     size_kb = len(page.encode("utf-8")) / 1024
     print(f"wrote dashboard.html ({size_kb:.1f} KB) "

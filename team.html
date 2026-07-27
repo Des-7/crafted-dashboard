@@ -145,6 +145,15 @@ a{color:var(--gold);text-decoration:none}a:hover{color:var(--gold-light)}
 .tcard-l{font-family:var(--fm);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--t-muted)}
 .tcard-v{font-family:var(--fd);font-weight:600;font-size:26px;line-height:1;margin:8px 0 6px;color:var(--t-bright)}.tcard-v span{color:var(--t-faint)}
 .tcard-s{font-size:11.5px;line-height:1.45;color:var(--t-faint)}
+/* Ops-band: DB-sourced production analytics, visually set apart from the
+   sheet-driven hero / course tracker so the two populations don't read as an
+   error. Figures come from viewer_metrics.json and refresh only on publish. */
+.ops-band{margin-top:16px;border:1px solid var(--gold-soft);border-radius:20px;padding:20px 22px;background:linear-gradient(180deg,rgba(226,182,78,.05),rgba(226,182,78,0) 140px)}
+.ops-band-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+.ops-tag{display:inline-flex;align-items:center;gap:8px;font-family:var(--fm);font-size:10.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--gold);background:var(--gold-soft);padding:6px 12px;border-radius:99px}
+.ops-dot{width:7px;height:7px;border-radius:99px;background:var(--gold)}
+.ops-asof{font-family:var(--fm);font-size:11px;color:var(--t-faint)}
+.ops-sub+.ops-sub{margin-top:24px}
 
 /* SLA banner */
 .sla{display:flex;gap:18px;align-items:center;padding:22px 26px;border-radius:16px;border:1px solid var(--green-soft);background:linear-gradient(90deg,rgba(62,207,142,.11),rgba(62,207,142,.02))}
@@ -268,6 +277,9 @@ a{color:var(--gold);text-decoration:none}a:hover{color:var(--gold-light)}
 .cg-name{font-family:var(--fd);font-weight:600;font-size:15px;color:var(--t-strong)}
 .cg-fac{font-family:var(--fm);font-size:11px;color:var(--t-dim);margin-left:8px}
 .cg-count{margin-left:auto;font-family:var(--fm);font-size:11px;color:var(--t-faint)}
+.cg-prog{margin-left:auto;display:flex;align-items:center;gap:12px;flex:none}
+.cg-stack{width:120px;flex:none}
+@media(max-width:520px){.cg-stack{width:74px}}
 .cg-body{padding:2px 0 14px 22px}
 .tl-grid{display:grid;grid-template-columns:2.4fr 1fr 1.1fr auto;gap:12px;align-items:center}
 .tl-head{font-family:var(--fm);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--t-faint);padding:0 0 4px}
@@ -338,6 +350,20 @@ a{color:var(--gold);text-decoration:none}a:hover{color:var(--gold-light)}
         <p class="lead">All faculties, courses and videos with current status and available links — always complete, the same for everyone.</p></div>
       </div>
       <div id="fullListing"></div>
+    </section>
+    <section class="section" aria-label="By type">
+      <div class="section-head"><div><div class="eyebrow">03 &middot; Formats</div>
+        <h2 class="h2">By type</h2>
+        <p class="lead">Every tracked video by content format, live from the intake sheet.</p></div>
+      </div>
+      <div id="byType"></div>
+    </section>
+    <section class="section ops-band" aria-label="Production analytics from the operations database">
+      <div class="ops-band-head">
+        <div class="ops-tag"><span class="ops-dot" aria-hidden="true"></span>Operations database</div>
+        <div class="ops-asof" id="opsAsOf"></div>
+      </div>
+      <div id="opsBand"></div>
     </section>
   </div>
   <div class="footer"><div class="foot-l">CraftED operations · team access</div>
@@ -435,6 +461,8 @@ document.getElementById('lockForm').addEventListener('submit', async function(ev
       mainView.classList.remove('team-hidden');
       renderAggregate();
       renderFullListing();
+      renderByType();
+      loadOpsBand();
     } else {
       lockErr.textContent = 'Wrong password. Try again.';
     }
@@ -493,6 +521,150 @@ function renderAggregate(){
   host.innerHTML = hero + dist;
 }
 
+// ---- By type (item 5): content-format breakdown, same shape as the Viewer's
+// "By type" card, computed from the sheet (video_type is available client-side). ----
+const TYPE_TONE = {video:'var(--gold)', storyboard:'var(--blue)'};
+const TYPE_PALETTE = ['var(--gold)','var(--blue)','var(--teal)','var(--cyan)','var(--green)'];
+function renderByType(){
+  const host = document.getElementById('byType');
+  const counts = {};
+  VIDEOS.forEach(function(v){ const t=(v.video_type||'').trim()||'—'; counts[t]=(counts[t]||0)+1; });
+  const rows = Object.keys(counts).map(function(t){ return [t, counts[t]]; })
+                     .sort(function(a,b){ return b[1]-a[1]; });
+  const total = VIDEOS.length || 1;
+  let body = '';
+  rows.forEach(function(pair, i){
+    const t = pair[0], n = pair[1], pct = n/total*100;
+    const color = TYPE_TONE[t] || TYPE_PALETTE[i % TYPE_PALETTE.length];
+    body += '<div class="trow"><div class="trow-head">'
+      + '<span class="trow-name">'+esc(t)+'</span>'
+      + '<span class="trow-val"><b>'+n+'</b> &middot; '+pct.toFixed(0)+'%</span></div>'
+      + '<div class="bar9"><div class="bar9-fill" style="width:'+pct.toFixed(2)+'%;background:'+color+'"></div></div></div>';
+  });
+  if(!rows.length) body = '<p class="lead">No videos yet.</p>';
+  host.innerHTML = '<div class="card part"><div class="part-label">By type</div><div class="tmix">'+body+'</div></div>';
+}
+
+// ---- Ops band (item 3): the DB-derived figures the intake sheet cannot supply
+// (SPEED cycle time, the 12-month delivery trend, SLA watch — no timestamps or
+// SLA config live in the sheet). Fetched same-origin from viewer_metrics.json,
+// which generate.py emits from the same ops DB that backs the Viewer, so these
+// match the Viewer exactly. OUTPUT/QUALITY LOOP come from the same JSON too, so
+// the whole SPEED·QUALITY LOOP·OUTPUT row is internally consistent (Option A):
+// SPEED's "of N delivered" and OUTPUT's "N/M" describe the same population. The
+// Team hero above stays sheet-driven and is intentionally left untouched. ----
+const MABBR = ['','jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
+function fmtAge(h){
+  if(h === null || h === undefined) return '—';
+  if(h < 1) return Math.round(h*60)+'m';
+  if(h < 48) return h.toFixed(1)+'h';
+  return (h/24).toFixed(1)+'d';
+}
+async function loadOpsBand(){
+  const host = document.getElementById('opsBand');
+  const asof = document.getElementById('opsAsOf');
+  try {
+    const res = await fetch('viewer_metrics.json', {cache:'no-store'});
+    if(!res.ok) throw new Error('http '+res.status);
+    const m = await res.json();
+    if(asof) asof.textContent = 'as of '+(m.generated_at_amman||'—')+' · refreshes on publish, not live';
+    host.innerHTML = opsDelivery(m) + opsSla(m);
+  } catch(err) {
+    if(asof) asof.textContent = '';
+    host.innerHTML = '<div class="card"><div class="sla-title">Production analytics unavailable</div>'
+      + '<div class="sla-sub">Could not load the operations-database figures (viewer_metrics.json). They appear once the Viewer has been published.</div></div>';
+  }
+}
+function opsMonthly(m){
+  const data = m.deliveries_per_month || [];
+  let maxn = 0, total = 0;
+  data.forEach(function(p){ if(p[1] > maxn) maxn = p[1]; });
+  if(!maxn) maxn = 1;
+  let cols = '';
+  data.forEach(function(p){
+    const ym = p[0], n = p[1]; total += n;
+    const label = MABBR[parseInt(ym.split('-')[1],10)] || '';
+    let bar;
+    if(n === 0){ bar = '<div class="col-bar zero" style="height:3px"></div>'; }
+    else { const px = Math.max(6, n/maxn*110); bar = '<div class="col-bar" style="height:'+px.toFixed(1)+'px"></div>'; }
+    cols += '<div class="col" title="'+esc(ym)+': '+n+' delivered">'+bar+'<div class="col-x">'+label+'</div></div>';
+  });
+  const empty = total === 0
+    ? '<div class="chart-empty"><span>No dated deliveries yet — real production volume will appear here as videos ship.</span></div>'
+    : '';
+  return '<div class="card chartcard"><div class="chart-title">Monthly deliveries</div>'
+    + '<div class="chart">'+cols+empty+'</div></div>';
+}
+function opsThrough(m){
+  const sp = m.speed||{}, q = m.quality_loop||{}, o = m.output||{};
+  let speedV, speedS;
+  if(sp.cycle_avg_h === null || sp.cycle_avg_h === undefined){
+    speedV = 'n/a';
+    speedS = 'avg cycle time — no delivery has a ≥1h cool-down span yet ('+(sp.cycle_delivered_total||0)+' delivered, all instant)';
+  } else {
+    speedV = fmtAge(sp.cycle_avg_h);
+    speedS = 'avg cycle time — over '+(sp.cycle_qualifying||0)+' of '+(sp.cycle_delivered_total||0)+' delivered (excludes retroactive)';
+  }
+  let qV, qS;
+  if(q.review_avg === null || q.review_avg === undefined){
+    qV = 'n/a'; qS = 'avg review rounds / video — none have reached review yet';
+  } else {
+    qV = Number(q.review_avg).toFixed(2);
+    const rw = (q.review_max === 1) ? 'round' : 'rounds';
+    qS = 'avg review rounds / video — peak: '+q.review_max+' '+rw+' on a single video';
+  }
+  const outS = o.inflight_total
+    ? 'delivered / total — '+o.inflight_total+' left to finish'
+    : 'delivered / total — all delivered';
+  const cards = [
+    ['SPEED', speedV, speedS],
+    ['QUALITY LOOP', qV, qS],
+    ['OUTPUT', (o.delivered_total||0)+'<span>/'+(o.total_videos||0)+'</span>', outS]
+  ];
+  let items = '';
+  cards.forEach(function(c){
+    items += '<div class="card tcard"><div class="tcard-l">'+c[0]+'</div>'
+      + '<div class="tcard-v">'+c[1]+'</div><div class="tcard-s">'+c[2]+'</div></div>';
+  });
+  return '<div class="through">'+items+'</div>';
+}
+function opsDelivery(m){
+  return '<div class="ops-sub"><div class="section-head"><div>'
+    + '<div class="eyebrow">Delivery · operations database</div>'
+    + '<h2 class="h2">Throughput &amp; delivery trend</h2>'
+    + '<p class="lead">Volume delivered over time, alongside cycle speed, review effort and output.</p></div>'
+    + '<div class="aside">Last 12 months</div></div>'
+    + '<div class="delivery">'+opsMonthly(m)+opsThrough(m)+'</div></div>';
+}
+function opsSla(m){
+  const courses = m.sla_watch || [];
+  let banner;
+  if(!courses.length){
+    banner = '<div class="sla ok"><div class="sla-icon">'
+      + '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#3ecf8e" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg></div>'
+      + '<div class="sla-body"><div class="sla-title">Every course is within SLA</div>'
+      + '<div class="sla-sub">No course has a video past its state threshold.</div></div>'
+      + '<div class="sla-count">0 courses at risk</div></div>';
+  } else {
+    const sorted = courses.slice().sort(function(a,b){ return b.attention_count - a.attention_count; });
+    let items = '';
+    sorted.forEach(function(c){
+      const n = c.attention_count, vids = (n===1?'video':'videos');
+      items += '<li><a href="courses/'+esc(c.slug)+'/">'+esc(c.name)+' <span class="code">'+esc(c.code)+'</span></a> — '
+        + '<span class="over">'+n+' '+vids+' over SLA</span></li>';
+    });
+    const nAt = sorted.length, cw = (nAt===1?'course':'courses');
+    banner = '<div class="sla risk"><div class="sla-icon">'
+      + '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg></div>'
+      + '<div class="sla-body"><div class="sla-title">'+nAt+' '+cw+' need attention</div>'
+      + '<ul class="sla-list">'+items+'</ul></div>'
+      + '<div class="sla-count">'+nAt+' at risk</div></div>';
+  }
+  return '<div class="ops-sub"><div class="section-head"><div>'
+    + '<div class="eyebrow">Attention · operations database</div>'
+    + '<h2 class="h2">SLA watch</h2></div></div>'+banner+'</div>';
+}
+
 // ---- Full listing, grouped under the four faculties (collapsible) ----
 // Build the runtime course->faculty map + registry course list from the server
 // response (Courses registry tab). Replaces the former hardcoded map.
@@ -511,12 +683,29 @@ function facultyOf(courseCode){
 // facSlug (optional) adds a small muted faculty label next to the course name;
 // only the Notifications view passes it (the Full Listing is already nested
 // under its faculty section, so the label would be redundant there).
-function courseDetails(courseCode, count, innerHTML, facSlug){
+function courseDetails(courseCode, count, innerHTML, facSlug, bar){
   const fac = facSlug ? '<span class="cg-fac">· '+esc(facSlug)+'</span>' : '';
-  return '<details class="course-group" open><summary>'+CHEV
+  // Collapsed on load (item 2). `bar` (Full Listing only) is a segmented
+  // delivered/in-flight progress bar + N/M ratio shown in the summary; when it
+  // is absent (Notifications, where the count is a filtered subset) we fall
+  // back to the plain video count.
+  const meta = bar || '<span class="cg-count">'+count+' video'+(count===1?'':'s')+'</span>';
+  return '<details class="course-group"><summary>'+CHEV
     + '<span class="cg-name">'+esc(courseCode)+'</span>'+fac
-    + '<span class="cg-count">'+count+' video'+(count===1?'':'s')+'</span>'
+    + meta
     + '</summary><div class="cg-body">'+innerHTML+'</div></details>';
+}
+// Segmented delivered/in-flight bar + N/M ratio for one course, matching the
+// Viewer's course-row bar (green = delivered, blue = everything still in flight).
+function courseBar(list){
+  const total = list.length;
+  const delivered = list.filter(function(v){ return v.status === 'delivered'; }).length;
+  const dpct = total ? delivered/total*100 : 0;
+  const ipct = total ? (total-delivered)/total*100 : 0;
+  return '<span class="cg-prog"><span class="stack cg-stack">'
+    + '<span class="seg green" style="width:'+dpct.toFixed(2)+'%"></span>'
+    + '<span class="seg blue" style="width:'+ipct.toFixed(2)+'%"></span></span>'
+    + '<span class="crow-ratio"><b>'+delivered+'</b><span>/'+total+'</span></span></span>';
 }
 // Group a video list by course_code -> ordered [ [course, videos], ... ].
 function groupByCourse(videos){
@@ -558,7 +747,7 @@ function renderFullListing(){
     return courses.slice().sort().map(function(c){
       const list = byCourse[c] || [];
       const inner = list.length ? courseTable(list) : '<div class="fac-empty">No videos in this course yet.</div>';
-      return courseDetails(c, list.length, inner);
+      return courseDetails(c, list.length, inner, null, list.length ? courseBar(list) : null);
     }).join('');
   }
   function nVid(courses){ return courses.reduce(function(a,c){ return a + (byCourse[c] ? byCourse[c].length : 0); }, 0); }
@@ -568,7 +757,8 @@ function renderFullListing(){
   // expected to resolve to one of these via the registry.
   FACULTIES.forEach(function(f){
     const courses = facCourses[f.slug] || [];
-    const open = courses.length ? ' open' : '';
+    // Item 2: every collapsible group starts closed, regardless of contents.
+    const open = '';
     html += '<details class="fac-group"'+open+'><summary>'+CHEV
       + '<span class="fac-name">'+esc(f.name)+'</span><span class="fac-slug">'+esc(f.slug)+'</span>'
       + '<span class="fac-count">'+(courses.length? nVid(courses)+' video'+(nVid(courses)===1?'':'s')+' · '+courses.length+' course'+(courses.length===1?'':'s') : 'no courses yet')+'</span>'
@@ -592,7 +782,7 @@ function renderFullListing(){
       const inner = list.length ? courseTable(list) : '<div class="fac-empty">No videos in this course yet.</div>';
       return courseDetails(c, list.length, inner, pair[1] || '(no faculty_slug)');
     }).join('');
-    html += '<details class="fac-group fac-problem" open><summary>'+CHEV
+    html += '<details class="fac-group fac-problem"><summary>'+CHEV
       + '<span class="fac-name">⚠ Unrecognized faculty</span>'
       + '<span class="fac-count">'+orphans.length+' course'+(orphans.length===1?'':'s')+' — fix the Courses registry</span>'
       + '</summary><div class="fac-body"><div class="fac-problem-note">These course(s) have a faculty_slug that is not one of the four registered faculties (sci, set, sbee, ssbs), or none at all. This is a Courses-registry data problem — correct the registry.</div>'
@@ -639,8 +829,8 @@ function renderNotifications(pick){
       + '<div class="nsec-body">'+body+'</div></details>';
   }
   host.innerHTML =
-      section('Need Action', need, 'Nothing needs action for <b>'+who+'</b> right now.', true)
-    + section('Done', done, 'No completed videos for <b>'+who+'</b> yet.', true);
+      section('Need Action', need, 'Nothing needs action for <b>'+who+'</b> right now.', false)
+    + section('Done', done, 'No completed videos for <b>'+who+'</b> yet.', false);
 }
 </script>
 </body></html>
