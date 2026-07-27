@@ -442,6 +442,19 @@ document.getElementById('backToMain').addEventListener('click', showMain);
 function showNotif(){ mainView.classList.add('team-hidden'); notifView.classList.remove('team-hidden'); window.scrollTo(0,0); renderNotifications(namePick.value); }
 function showMain(){ notifView.classList.add('team-hidden'); mainView.classList.remove('team-hidden'); window.scrollTo(0,0); }
 
+// Reveal the team view and run the full render path. Shared by a normal unlock
+// and by same-session restore, so both take the identical path.
+function hydrateAndRender(out){
+  VIDEOS = Array.isArray(out.videos) ? out.videos : [];
+  buildRegistry(out);
+  lockView.classList.add('team-hidden');
+  mainView.classList.remove('team-hidden');
+  renderAggregate();
+  renderFullListing();
+  renderByType();
+  loadOpsBand();
+}
+
 document.getElementById('lockForm').addEventListener('submit', async function(ev){
   ev.preventDefault();
   const password = pwInput.value;
@@ -454,15 +467,12 @@ document.getElementById('lockForm').addEventListener('submit', async function(ev
     });
     const out = await res.json();
     if(out && out.ok){
-      VIDEOS = Array.isArray(out.videos) ? out.videos : [];
-      buildRegistry(out);
       pwInput.value = '';
-      lockView.classList.add('team-hidden');
-      mainView.classList.remove('team-hidden');
-      renderAggregate();
-      renderFullListing();
-      renderByType();
-      loadOpsBand();
+      // Cache the payload for this tab session so a refresh doesn't re-prompt
+      // (Option A). Store the payload ONLY — never the password. The real gate
+      // stays the server-side team_data check above.
+      try { sessionStorage.setItem('crafted_team_data', JSON.stringify(out)); } catch(e){}
+      hydrateAndRender(out);
     } else {
       lockErr.textContent = 'Wrong password. Try again.';
     }
@@ -832,5 +842,30 @@ function renderNotifications(pick){
       section('Need Action', need, 'Nothing needs action for <b>'+who+'</b> right now.', false)
     + section('Done', done, 'No completed videos for <b>'+who+'</b> yet.', false);
 }
+
+// Switch access = log out: clear the session cache BEFORE navigating away so
+// returning to the Team page does not silently auto-restore the old session.
+Array.prototype.forEach.call(document.querySelectorAll('a[href="index.html"]'), function(a){
+  a.addEventListener('click', function(){
+    try { sessionStorage.removeItem('crafted_team_data'); } catch(e){}
+  });
+});
+
+// Same-session restore (Option A): if this tab already unlocked once, re-enter
+// from the cached payload without re-prompting or re-hitting team_data. A
+// missing/corrupt/rotated cache falls through to the gate exactly as before —
+// the password is never stored, so nothing secret lives in sessionStorage.
+(function(){
+  let cached;
+  try { cached = sessionStorage.getItem('crafted_team_data'); } catch(e){ return; }
+  if(!cached) return;
+  try {
+    const out = JSON.parse(cached);
+    if(out && out.ok){ hydrateAndRender(out); }
+    else { sessionStorage.removeItem('crafted_team_data'); }
+  } catch(e){
+    try { sessionStorage.removeItem('crafted_team_data'); } catch(_){}
+  }
+})();
 </script>
 </body></html>
