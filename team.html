@@ -688,6 +688,14 @@ function buildRegistry(out){
 function facultyOf(courseCode){
   return COURSE_FACULTY[String(courseCode||'').toLowerCase()] || '';
 }
+// JS mirror of generate.py's slugify() so a course name in the listing can link
+// to its generated page at courses/<slug>/. NOTE: generate.py appends "-<id>" on
+// a slug *collision*, which this pure-string mirror can't reproduce; all current
+// course codes slugify uniquely, and we guard by only linking when slug!=='' —
+// so a future collision degrades to a (rare) wrong link, never a crash.
+function courseSlug(code){
+  return String(code||'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'');
+}
 // Shared collapsible COURSE group — reused by the Full Listing AND by the
 // Need Action / Done notification sections (same pattern/styling as faculties).
 // facSlug (optional) adds a small muted faculty label next to the course name;
@@ -700,8 +708,15 @@ function courseDetails(courseCode, count, innerHTML, facSlug, bar){
   // is absent (Notifications, where the count is a filtered subset) we fall
   // back to the plain video count.
   const meta = bar || '<span class="cg-count">'+count+' video'+(count===1?'':'s')+'</span>';
+  // Link the course name to its generated page. stopPropagation keeps a click on
+  // the link from also toggling the <details>; the guard avoids linking to a
+  // 404 if the slug ever comes out empty.
+  const slug = courseSlug(courseCode);
+  const nameHtml = slug
+    ? '<a class="cg-name" href="courses/'+slug+'/" style="text-decoration:none" onclick="event.stopPropagation()">'+esc(courseCode)+'</a>'
+    : '<span class="cg-name">'+esc(courseCode)+'</span>';
   return '<details class="course-group"><summary>'+CHEV
-    + '<span class="cg-name">'+esc(courseCode)+'</span>'+fac
+    + nameHtml+fac
     + meta
     + '</summary><div class="cg-body">'+innerHTML+'</div></details>';
 }

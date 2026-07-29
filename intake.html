@@ -215,7 +215,12 @@ form.addEventListener('submit', async function(ev){
       form.reset();
       syncInstructorField(); // reset() clears the type select -> re-hide the field
     } else {
-      showMsg('err', 'Error: ' + ((out && out.error) ? out.error : 'unknown') + ' — your entries are still here, please try again.');
+      const FRIENDLY = {
+        duplicate_video_code: 'This video code already exists — pick a different one.',
+        unknown_course: "This course isn't registered yet. Ask an admin to add it."
+      };
+      const reason = (out && FRIENDLY[out.code]) || ('Error: ' + ((out && out.error) ? out.error : 'unknown'));
+      showMsg('err', reason + ' — your entries are still here, please try again.');
     }
   } catch(err) {
     showMsg('err', 'Could not reach the server. Check your connection and try again — your entries are still here.');

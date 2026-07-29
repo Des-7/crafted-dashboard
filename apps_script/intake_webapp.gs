@@ -156,13 +156,42 @@ function doPost(e) {
     // IT/admin fix (the "Anyone within htu.edu.jo" deployment option needs the
     // script owned by an @htu.edu.jo Workspace account). Re-enable here and at
     // the deployment level together once that is resolved.
-    var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(SHEET_NAME);
+    var ss = SpreadsheetApp.openById(SHEET_ID);
+    var sheet = ss.getSheetByName(SHEET_NAME);
 
     var required = ['course_code', 'video_code', 'title', 'video_type', 'drive_folder_link', 'submitter'];
     for (var i = 0; i < required.length; i++) {
       if (!data[required[i]] || String(data[required[i]]).trim() === '') {
-        return ContentService.createTextOutput(JSON.stringify({ok: false, error: 'الحقل ده فاضي: ' + required[i]}))
-          .setMimeType(ContentService.MimeType.JSON);
+        return jsonOut({ok: false, error: 'This field is required: ' + required[i]});
+      }
+    }
+
+    // Reject a course that is not in the Courses registry (case-insensitive).
+    // The dropdown is built from this same registry, so this only fires on a
+    // stale/hand-crafted submission — but it gives the form a real reason to show
+    // instead of silently writing an orphan row.
+    var reg = readRegistry(ss);
+    var courseIn = String(data.course_code).trim();
+    var courseKnown = reg.codes.some(function (c) {
+      return c.toLowerCase() === courseIn.toLowerCase();
+    });
+    if (!courseKnown) {
+      return jsonOut({ok: false, code: 'unknown_course', error: "This course isn't registered yet: " + courseIn});
+    }
+
+    // Reject a video_code that already exists in the sheet (case-insensitive,
+    // trimmed). Previously a duplicate was silently written as a second row.
+    var dupHead = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(function (h) {
+      return String(h).trim().toLowerCase().replace(/\s+/g, '_');
+    });
+    var vcCol = dupHead.indexOf('video_code');
+    if (vcCol >= 0 && sheet.getLastRow() > 1) {
+      var vcIn = String(data.video_code).trim().toLowerCase();
+      var vcVals = sheet.getRange(2, vcCol + 1, sheet.getLastRow() - 1, 1).getValues();
+      for (var v = 0; v < vcVals.length; v++) {
+        if (String(vcVals[v][0]).trim().toLowerCase() === vcIn) {
+          return jsonOut({ok: false, code: 'duplicate_video_code', error: 'This video code already exists: ' + String(data.video_code).trim()});
+        }
       }
     }
 
