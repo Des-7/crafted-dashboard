@@ -117,7 +117,7 @@ a{color:var(--gold);text-decoration:none}a:hover{color:var(--gold-light)}
 .crow-name b{font-weight:400;font-size:13.5px;color:#d6dbe4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .crow-name i{font-style:normal;font-size:12px;color:var(--t-faint);flex:none}
 .stack{height:9px;background:var(--track);border-radius:99px;overflow:hidden;display:flex}
-.stack .seg{height:100%}.seg.green{background:var(--green)}.seg.blue{background:var(--blue)}
+.stack .seg{height:100%}.seg.green{background:var(--green)}.seg.blue{background:var(--blue)}.seg.red{background:var(--red)}
 .crow-ratio{font-family:var(--fm);font-size:12.5px;white-space:nowrap;text-align:right;min-width:44px}.crow-ratio b{color:var(--t-strong);font-weight:500}.crow-ratio span{color:var(--t-faint)}
 .legend{display:flex;align-items:center;gap:18px;margin-top:20px;padding-top:16px;border-top:1px solid var(--hair)}
 .leg{display:flex;align-items:center;gap:7px;font-family:var(--fm);font-size:11px;color:var(--t-muted)}
@@ -531,28 +531,60 @@ function renderAggregate(){
   host.innerHTML = hero + dist;
 }
 
-// ---- By type (item 5): content-format breakdown, same shape as the Viewer's
-// "By type" card, computed from the sheet (video_type is available client-side). ----
-const TYPE_TONE = {video:'var(--gold)', storyboard:'var(--blue)'};
-const TYPE_PALETTE = ['var(--gold)','var(--blue)','var(--teal)','var(--cyan)','var(--green)'];
+// ---- Shared three-bucket status-mix bar (By type / By course). delivered=green,
+// failed+on_hold=red, everything else in-flight=blue. statusBucket() MUST stay
+// identical to generate.py's status_bucket(); statusStack() mirrors its
+// render_status_stack() (fixed delivered->in-flight->failed order, last present
+// segment absorbs the rounding remainder, per-segment title/aria for a11y). ----
+function statusBucket(s){
+  if(s === 'delivered') return 'delivered';
+  if(s === 'failed' || s === 'on_hold') return 'failed';
+  return 'inflight';
+}
+const STATUS_SEGS = [['delivered','green','Delivered'],['inflight','blue','In flight'],['failed','red','Failed']];
+const STATUS_LEGEND = '<div class="legend">'
+  + '<span class="leg"><span class="leg-dot" style="background:var(--green)"></span>delivered</span>'
+  + '<span class="leg"><span class="leg-dot" style="background:var(--blue)"></span>in flight</span>'
+  + '<span class="leg"><span class="leg-dot" style="background:var(--red)"></span>failed</span></div>';
+function statusStack(c, extraClass){
+  // c = {delivered, inflight, failed, total}
+  const total = c.total || 0;
+  const cls = 'stack' + (extraClass ? ' ' + extraClass : '');
+  if(!total) return '<span class="'+cls+'" role="img" aria-label="no videos" title="no videos"></span>';
+  const present = STATUS_SEGS.filter(function(o){ return (c[o[0]]||0) > 0; });
+  let acc = 0, segs = '';
+  present.forEach(function(o, i){
+    const n = c[o[0]];
+    const w = (i === present.length - 1) ? (100 - acc) : Math.round(n/total*10000)/100;
+    if(i !== present.length - 1) acc += w;
+    const title = o[2] + ': ' + n;
+    segs += '<span class="seg '+o[1]+'" role="img" style="width:'+w.toFixed(2)+'%" title="'+title+'" aria-label="'+title+'"></span>';
+  });
+  return '<span class="'+cls+'">'+segs+'</span>';
+}
+
+// ---- By type (item 5): per-format STATUS mix, same stacked bar as the Viewer's
+// "By type" card, computed from the sheet (video_type + status are client-side). ----
 function renderByType(){
   const host = document.getElementById('byType');
   const counts = {};
-  VIDEOS.forEach(function(v){ const t=(v.video_type||'').trim()||'—'; counts[t]=(counts[t]||0)+1; });
+  VIDEOS.forEach(function(v){
+    const t = (v.video_type||'').trim() || '—';
+    const c = counts[t] || (counts[t] = {delivered:0, inflight:0, failed:0, total:0});
+    c[statusBucket(v.status)]++; c.total++;
+  });
   const rows = Object.keys(counts).map(function(t){ return [t, counts[t]]; })
-                     .sort(function(a,b){ return b[1]-a[1]; });
-  const total = VIDEOS.length || 1;
+                     .sort(function(a,b){ return b[1].total - a[1].total; });
   let body = '';
-  rows.forEach(function(pair, i){
-    const t = pair[0], n = pair[1], pct = n/total*100;
-    const color = TYPE_TONE[t] || TYPE_PALETTE[i % TYPE_PALETTE.length];
+  rows.forEach(function(pair){
+    const t = pair[0], c = pair[1];
     body += '<div class="trow"><div class="trow-head">'
       + '<span class="trow-name">'+esc(t)+'</span>'
-      + '<span class="trow-val"><b>'+n+'</b> &middot; '+pct.toFixed(0)+'%</span></div>'
-      + '<div class="bar9"><div class="bar9-fill" style="width:'+pct.toFixed(2)+'%;background:'+color+'"></div></div></div>';
+      + '<span class="trow-val"><b>'+c.total+'</b></span></div>'
+      + statusStack(c) + '</div>';
   });
   if(!rows.length) body = '<p class="lead">No videos yet.</p>';
-  host.innerHTML = '<div class="card part"><div class="part-label">By type</div><div class="tmix">'+body+'</div></div>';
+  host.innerHTML = '<div class="card part"><div class="part-label">By type</div><div class="tmix">'+body+'</div>'+STATUS_LEGEND+'</div>';
 }
 
 // ---- Ops band (item 3): the DB-derived figures the intake sheet cannot supply
@@ -723,14 +755,10 @@ function courseDetails(courseCode, count, innerHTML, facSlug, bar){
 // Segmented delivered/in-flight bar + N/M ratio for one course, matching the
 // Viewer's course-row bar (green = delivered, blue = everything still in flight).
 function courseBar(list){
-  const total = list.length;
-  const delivered = list.filter(function(v){ return v.status === 'delivered'; }).length;
-  const dpct = total ? delivered/total*100 : 0;
-  const ipct = total ? (total-delivered)/total*100 : 0;
-  return '<span class="cg-prog"><span class="stack cg-stack">'
-    + '<span class="seg green" style="width:'+dpct.toFixed(2)+'%"></span>'
-    + '<span class="seg blue" style="width:'+ipct.toFixed(2)+'%"></span></span>'
-    + '<span class="crow-ratio"><b>'+delivered+'</b><span>/'+total+'</span></span></span>';
+  const c = {delivered:0, inflight:0, failed:0, total:list.length};
+  list.forEach(function(v){ c[statusBucket(v.status)]++; });
+  return '<span class="cg-prog">' + statusStack(c, 'cg-stack')
+    + '<span class="crow-ratio"><b>'+c.delivered+'</b><span>/'+c.total+'</span></span></span>';
 }
 // Group a video list by course_code -> ordered [ [course, videos], ... ].
 function groupByCourse(videos){

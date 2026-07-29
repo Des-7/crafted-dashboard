@@ -71,6 +71,21 @@ PIPELINE_STAGES = [
     "rendering", "rendered", "delivered",
 ]
 
+# Three-bucket status model for the stacked mix bars (by type / course /
+# faculty): delivered=green, failed+on_hold=red, everything else in-flight=blue.
+# This bucketing MUST stay identical to team.html's statusBucket() — the two
+# engines are only consistent as long as these two agree.
+FAILED_STATUSES = ("failed", "on_hold")
+
+
+def status_bucket(status):
+    """Collapse a raw ops status into delivered / failed / inflight."""
+    if status == "delivered":
+        return "delivered"
+    if status in FAILED_STATUSES:
+        return "failed"
+    return "inflight"
+
 
 # --------------------------------------------------------------------------- #
 # Time helpers
@@ -162,12 +177,22 @@ def collect(conn, now_utc):
     d["inflight_total"] = d["total_videos"] - d["delivered_total"]
 
     # -- Type / course breakdown -------------------------------------------
-    d["type_counts"] = [
-        (r["video_type"], r["n"])
-        for r in conn.execute(
-            "SELECT video_type, COUNT(*) n FROM videos "
-            "GROUP BY video_type ORDER BY n DESC")
-    ]
+    # Per-type STATUS rollup feeding the stacked "By type" bar: for each content
+    # format, how many videos sit in each of the three buckets. Blank/NULL types
+    # collapse to "—" (mirrors the Team page). Ordered busiest type first.
+    type_rollup = {}
+    for r in conn.execute(
+            "SELECT video_type, status, COUNT(*) n FROM videos "
+            "GROUP BY video_type, status"):
+        label = (r["video_type"] or "").strip() or "—"
+        bucket = type_rollup.get(label)
+        if bucket is None:
+            bucket = {"delivered": 0, "inflight": 0, "failed": 0, "total": 0}
+            type_rollup[label] = bucket
+        bucket[status_bucket(r["status"])] += r["n"]
+        bucket["total"] += r["n"]
+    d["type_counts"] = sorted(
+        type_rollup.items(), key=lambda kv: -kv[1]["total"])
     # projects IS the faculty layer: each course maps to a faculty via
     # courses.project_id. p.slug is the ops faculty slug (case-sensitive,
     # lowercase — displayed verbatim); p.name is the faculty display name.
@@ -175,11 +200,13 @@ def collect(conn, now_utc):
         dict(id=r["id"], project_id=r["project_id"],
              faculty_slug=r["faculty_slug"], faculty_name=r["faculty_name"],
              code=r["code"], name=r["name"], total=r["total"],
-             delivered=r["delivered"], inflight=r["total"] - r["delivered"])
+             delivered=r["delivered"], failed=r["failed"],
+             inflight=r["total"] - r["delivered"] - r["failed"])
         for r in conn.execute(
             "SELECT c.id, c.project_id, p.slug AS faculty_slug, "
             "  p.name AS faculty_name, c.code, c.name, COUNT(v.id) total, "
-            "  COALESCE(SUM(CASE WHEN v.status='delivered' THEN 1 ELSE 0 END), 0) delivered "
+            "  COALESCE(SUM(CASE WHEN v.status='delivered' THEN 1 ELSE 0 END), 0) delivered, "
+            "  COALESCE(SUM(CASE WHEN v.status IN ('failed','on_hold') THEN 1 ELSE 0 END), 0) failed "
             "FROM courses c "
             "JOIN projects p ON p.id = c.project_id "
             "LEFT JOIN videos v ON v.course_id = c.id "
@@ -202,12 +229,13 @@ def collect(conn, now_utc):
         if fid not in faculties_by_id:
             faculties_by_id[fid] = dict(
                 id=fid, slug=c["faculty_slug"], name=c["faculty_name"],
-                courses=[], total=0, delivered=0, inflight=0)
+                courses=[], total=0, delivered=0, failed=0, inflight=0)
             faculty_order.append(fid)
         f = faculties_by_id[fid]
         f["courses"].append(c)
         f["total"] += c["total"]
         f["delivered"] += c["delivered"]
+        f["failed"] += c["failed"]
         f["inflight"] += c["inflight"]
     faculties = [faculties_by_id[i] for i in faculty_order]
     faculties.sort(key=lambda f: (-f["total"], f["slug"]))
@@ -425,6 +453,52 @@ _CHEV = ('<svg class="fac-chev" width="14" height="14" viewBox="0 0 24 24" '
          '<path d="m9 6 6 6-6 6"/></svg>')
 
 
+# Fixed left-to-right segment order for every status-mix bar, and the shared
+# legend that sits under each card that uses one. delivered -> in-flight ->
+# failed, so the bar reads calm-to-alarm and matches the old green-then-blue
+# course bars. This must stay in lockstep with team.html's statusStack().
+_STATUS_SEGS = (("delivered", "green", "Delivered"),
+                ("inflight", "blue", "In flight"),
+                ("failed", "red", "Failed"))
+
+_STATUS_LEGEND = (
+    '<div class="legend">'
+    '<span class="leg"><span class="leg-dot" style="background:var(--green)"></span>delivered</span>'
+    '<span class="leg"><span class="leg-dot" style="background:var(--blue)"></span>in flight</span>'
+    '<span class="leg"><span class="leg-dot" style="background:var(--red)"></span>failed</span></div>')
+
+
+def render_status_stack(counts, extra_class=""):
+    """One full-width `.stack` bar segmented delivered / in-flight / failed.
+
+    ``counts`` is a dict with delivered/inflight/failed/total. Only present
+    (>0) buckets get a segment, in the fixed _STATUS_SEGS order; widths are
+    computed from raw counts and the LAST present segment absorbs the rounding
+    remainder so they sum to exactly 100%. A 0-total row renders an empty track.
+    Each segment carries a title/aria-label ("Delivered: 12") so the mix is
+    legible without colour.
+    """
+    total = counts.get("total", 0)
+    cls = ("stack " + extra_class).strip()
+    if not total:
+        return (f'<span class="{cls}" role="img" aria-label="no videos" '
+                'title="no videos"></span>')
+    present = [(c, lab, counts.get(k, 0)) for (k, c, lab) in _STATUS_SEGS
+               if counts.get(k, 0) > 0]
+    segs, acc = [], 0.0
+    for i, (c, lab, n) in enumerate(present):
+        if i == len(present) - 1:
+            w = 100.0 - acc
+        else:
+            w = round(n / total * 100, 2)
+            acc += w
+        title = f"{lab}: {n}"
+        segs.append(
+            f'<span class="seg {c}" role="img" style="width:{w:.2f}%" '
+            f'title="{title}" aria-label="{title}"></span>')
+    return f'<span class="{cls}">{"".join(segs)}</span>'
+
+
 def render_faculty(d):
     """BY FACULTY partition: each faculty is a collapsible group of course rows.
 
@@ -440,16 +514,13 @@ def render_faculty(d):
     for f in faculties:
         rows = []
         for c in f["courses"]:
-            # Segments fill each row relative to the course's own total.
-            dpct = (c["delivered"] / c["total"] * 100) if c["total"] else 0
-            ipct = (c["inflight"] / c["total"] * 100) if c["total"] else 0
+            # Same three-bucket status-mix stack as By type, sized to the
+            # course's own total.
             rows.append(
                 f'<a class="crow" href="courses/{e(c["slug"])}/">'
                 f'<span class="crow-name"><b>{e(c["name"])}</b>'
                 '<i aria-hidden="true">&#8599;</i></span>'
-                '<span class="stack">'
-                f'<span class="seg green" style="width:{dpct:.2f}%"></span>'
-                f'<span class="seg blue" style="width:{ipct:.2f}%"></span></span>'
+                f'{render_status_stack(c)}'
                 f'<span class="crow-ratio"><b>{c["delivered"]}</b>'
                 f'<span>/{c["total"]}</span></span></a>'
             )
@@ -463,37 +534,26 @@ def render_faculty(d):
             f'&middot; {f["delivered"]}/{f["total"]} delivered</span></summary>'
             f'<div class="fac-rows">{"".join(rows)}</div></details>'
         )
-    legend = ('<div class="legend">'
-              '<span class="leg"><span class="leg-dot" style="background:var(--green)"></span>delivered</span>'
-              '<span class="leg"><span class="leg-dot" style="background:var(--blue)"></span>in flight</span></div>')
     return (f'<div class="card part"><div class="part-label">By faculty</div>'
-            f'{"".join(groups)}{legend}</div>')
-
-
-_TYPE_TONE = {"video": "var(--gold)", "storyboard": "var(--blue)"}
-_TYPE_PALETTE = ["var(--gold)", "var(--blue)", "var(--teal)", "var(--cyan)", "var(--green)"]
+            f'{"".join(groups)}{_STATUS_LEGEND}</div>')
 
 
 def render_type_mix(d):
-    """BY TYPE partition: one labelled bar per content format."""
+    """BY TYPE partition: one stacked status-mix bar per content format."""
     rows = d["type_counts"]
     if not rows:
         return ('<div class="card part"><div class="part-label">By type</div>'
                 '<p class="lead">No videos yet.</p></div>')
-    total = sum(n for _, n in rows) or 1
     body = []
-    for i, (vtype, n) in enumerate(rows):
-        pct = n / total * 100
-        color = _TYPE_TONE.get(vtype, _TYPE_PALETTE[i % len(_TYPE_PALETTE)])
+    for vtype, c in rows:
         body.append(
             '<div class="trow"><div class="trow-head">'
             f'<span class="trow-name">{e(vtype)}</span>'
-            f'<span class="trow-val"><b>{n}</b> &middot; {pct:.0f}%</span></div>'
-            f'<div class="bar9"><div class="bar9-fill" '
-            f'style="width:{pct:.2f}%;background:{color}"></div></div></div>'
+            f'<span class="trow-val"><b>{c["total"]}</b></span></div>'
+            f'{render_status_stack(c)}</div>'
         )
     return (f'<div class="card part"><div class="part-label">By type</div>'
-            f'<div class="tmix">{"".join(body)}</div></div>')
+            f'<div class="tmix">{"".join(body)}</div>{_STATUS_LEGEND}</div>')
 
 
 def render_throughput(d):
@@ -772,7 +832,7 @@ a{color:var(--gold);text-decoration:none}a:hover{color:var(--gold-light)}
 .crow-name b{font-weight:400;font-size:13.5px;color:#d6dbe4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .crow-name i{font-style:normal;font-size:12px;color:var(--t-faint);flex:none}
 .stack{height:9px;background:var(--track);border-radius:99px;overflow:hidden;display:flex}
-.stack .seg{height:100%}.seg.green{background:var(--green)}.seg.blue{background:var(--blue)}
+.stack .seg{height:100%}.seg.green{background:var(--green)}.seg.blue{background:var(--blue)}.seg.red{background:var(--red)}
 .crow-ratio{font-family:var(--fm);font-size:12.5px;white-space:nowrap;text-align:right;min-width:44px}.crow-ratio b{color:var(--t-strong);font-weight:500}.crow-ratio span{color:var(--t-faint)}
 .legend{display:flex;align-items:center;gap:18px;margin-top:20px;padding-top:16px;border-top:1px solid var(--hair)}
 .leg{display:flex;align-items:center;gap:7px;font-family:var(--fm);font-size:11px;color:var(--t-muted)}
