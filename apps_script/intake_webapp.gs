@@ -209,7 +209,21 @@ function doPost(e) {
       // in the sheet -- add it, or this value is silently dropped like any
       // unmatched key. It never overwrites another column.
       instructor_name: String(data.instructor_name || '').trim(),
-      drive_folder_link: String(data.drive_folder_link).trim()
+      drive_folder_link: String(data.drive_folder_link).trim(),
+      // Optional per-video setting ('edit' | 'skip'), sent by W8 from the filming
+      // sheet's "Design Review" column and NEVER by the form. Deliberately absent
+      // from `required` above: a submission without it is normal and must stay
+      // legal. Same rule as instructor_name -- it lands in the "design_review"
+      // column IF that header exists in the sheet, and is otherwise dropped like
+      // any unmatched key, never overwriting another column.
+      //
+      // A sender that omits the key entirely and one that sends '' are treated
+      // the same HERE (both write a blank cell), but the distinction still
+      // matters upstream: W8 omits the key rather than sending '' so that a blank
+      // filming cell leaves the intake cell untouched. Downstream, a blank cell
+      // means "unset" and the video falls back to the worker's own default --
+      // so never substitute a default value here.
+      design_review: String(data.design_review || '').trim()
     };
     var courseIdx = -1;
     headers.forEach(function(h, idx) {
