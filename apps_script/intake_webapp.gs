@@ -181,14 +181,34 @@ function doPost(e) {
 
     // Reject a video_code that already exists in the sheet (case-insensitive,
     // trimmed). Previously a duplicate was silently written as a second row.
+    //
+    // A RETIRED row does not count. `ops_cli video retire` stamps `retired_at`
+    // on the intake row of a video that was removed and is being remade: the row
+    // stays as history (one of ours carries six Filestage versions) but must not
+    // block the code from being registered again. Without this, removing a video
+    // made it permanently unregisterable and the failure was silent — W8 stamped
+    // 'Registered ✓' on a registration this endpoint had refused (2026-08-30;
+    // four such rows existed before anyone noticed).
+    //
+    // The column is OPTIONAL: absent `retired_at`, every row counts as live and
+    // behaviour is exactly as before, so this is safe to deploy before the
+    // column is added.
     var dupHead = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(function (h) {
       return String(h).trim().toLowerCase().replace(/\s+/g, '_');
     });
     var vcCol = dupHead.indexOf('video_code');
+    var retCol = dupHead.indexOf('retired_at');
     if (vcCol >= 0 && sheet.getLastRow() > 1) {
+      var nRows = sheet.getLastRow() - 1;
       var vcIn = String(data.video_code).trim().toLowerCase();
-      var vcVals = sheet.getRange(2, vcCol + 1, sheet.getLastRow() - 1, 1).getValues();
+      var vcVals = sheet.getRange(2, vcCol + 1, nRows, 1).getValues();
+      var retVals = retCol >= 0
+        ? sheet.getRange(2, retCol + 1, nRows, 1).getValues()
+        : null;
       for (var v = 0; v < vcVals.length; v++) {
+        if (retVals && String(retVals[v][0]).trim() !== '') {
+          continue;  // retired: kept as history, never a blocker
+        }
         if (String(vcVals[v][0]).trim().toLowerCase() === vcIn) {
           return jsonOut({ok: false, code: 'duplicate_video_code', error: 'This video code already exists: ' + String(data.video_code).trim()});
         }
